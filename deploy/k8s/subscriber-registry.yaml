@@ -1,0 +1,79 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: subscriber-registry
+  namespace: event-gateway
+  labels:
+    app.kubernetes.io/name: subscriber-registry
+    app.kubernetes.io/part-of: event-gateway
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8081
+      targetPort: 8081
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: subscriber-registry
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: subscriber-registry
+  namespace: event-gateway
+  labels:
+    app.kubernetes.io/name: subscriber-registry
+    app.kubernetes.io/part-of: event-gateway
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: subscriber-registry
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: subscriber-registry
+        app.kubernetes.io/part-of: event-gateway
+    spec:
+      containers:
+        - name: subscriber-registry
+          image: event-gateway/subscriber-registry:latest
+          ports:
+            - containerPort: 8081
+              name: http
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: event-gateway-secrets
+                  key: DATABASE_URL
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: subscriber-registry-pdb
+  namespace: event-gateway
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: subscriber-registry

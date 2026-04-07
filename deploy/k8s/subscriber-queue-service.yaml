@@ -1,0 +1,83 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: subscriber-queue-service
+  namespace: event-gateway
+  labels:
+    app.kubernetes.io/name: subscriber-queue-service
+    app.kubernetes.io/part-of: event-gateway
+spec:
+  type: ClusterIP
+  ports:
+    - port: 50052
+      targetPort: 50052
+      protocol: TCP
+      name: grpc
+  selector:
+    app.kubernetes.io/name: subscriber-queue-service
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: subscriber-queue-service
+  namespace: event-gateway
+  labels:
+    app.kubernetes.io/name: subscriber-queue-service
+    app.kubernetes.io/part-of: event-gateway
+spec:
+  serviceName: subscriber-queue-service
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: subscriber-queue-service
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: subscriber-queue-service
+        app.kubernetes.io/part-of: event-gateway
+    spec:
+      containers:
+        - name: subscriber-queue-service
+          image: event-gateway/subscriber-queue-service:latest
+          ports:
+            - containerPort: 50052
+              name: grpc
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          readinessProbe:
+            grpc:
+              port: 50052
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            grpc:
+              port: 50052
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: subscriber-queue-service-pdb
+  namespace: event-gateway
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: subscriber-queue-service

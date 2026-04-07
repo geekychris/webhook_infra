@@ -1,0 +1,149 @@
+syntax = "proto3";
+
+package queue.v1;
+
+option go_package = "github.com/example/event-gateway/internal/proto/queue/v1;queuev1";
+
+// QueueService manages per-subscription durable event queues.
+service QueueService {
+  // Append events to a subscription's queue.
+  rpc Append(AppendRequest) returns (AppendResponse);
+  // Read a batch of events from a subscription's queue.
+  rpc Read(ReadRequest) returns (ReadResponse);
+  // Acknowledge events and advance the cursor.
+  rpc Ack(AckRequest) returns (AckResponse);
+  // Acquire an exclusive delivery lease for a subscription.
+  rpc AcquireLease(AcquireLeaseRequest) returns (AcquireLeaseResponse);
+  // Extend an existing delivery lease.
+  rpc RenewLease(RenewLeaseRequest) returns (RenewLeaseResponse);
+  // Release a delivery lease early.
+  rpc ReleaseLease(ReleaseLeaseRequest) returns (ReleaseLeaseResponse);
+  // List subscriptions that have pending (undelivered) events.
+  rpc ListReady(ListReadyRequest) returns (ListReadyResponse);
+  // Get the queue state for a subscription.
+  rpc GetState(GetStateRequest) returns (GetStateResponse);
+  // Reset the acked cursor for replay.
+  rpc ResetCursor(ResetCursorRequest) returns (ResetCursorResponse);
+}
+
+// CloudEvent in protobuf form (CloudEvents v1.0).
+message CloudEventProto {
+  string spec_version = 1;
+  string id = 2;
+  string type = 3;
+  string source = 4;
+  string data_content_type = 5;
+  int64 time_unix_nanos = 6;
+  string subject = 7;
+  string data_schema = 8;
+  bytes data = 9;
+}
+
+// A single queue entry.
+message QueueEntry {
+  uint64 position = 1;
+  string subscription_id = 2;
+  CloudEventProto event = 3;
+  int64 enqueued_at_nanos = 4;
+}
+
+// Subscription queue state.
+message SubscriptionState {
+  string subscription_id = 1;
+  uint64 tail_seq = 2;
+  uint64 acked_seq = 3;
+  uint64 lease_epoch = 4;
+  int32 consecutive_failures = 5;
+}
+
+// ---------- Append ----------
+message AppendRequest {
+  string subscription_id = 1;
+  repeated CloudEventProto events = 2;
+}
+
+message AppendResponse {
+  uint64 first_position = 1;
+  uint64 last_position = 2;
+}
+
+// ---------- Read ----------
+message ReadRequest {
+  string subscription_id = 1;
+  uint64 after_position = 2;
+  int32 max_count = 3;
+  int32 max_bytes = 4;
+  uint64 lease_epoch = 5;
+}
+
+message ReadResponse {
+  repeated QueueEntry entries = 1;
+}
+
+// ---------- Ack ----------
+message AckRequest {
+  string subscription_id = 1;
+  uint64 position = 2;
+  uint64 lease_epoch = 3;
+}
+
+message AckResponse {}
+
+// ---------- AcquireLease ----------
+message AcquireLeaseRequest {
+  string subscription_id = 1;
+  string holder_id = 2;
+  int64 ttl_seconds = 3;
+}
+
+message AcquireLeaseResponse {
+  uint64 epoch = 1;
+  int64 expires_at_unix = 2;
+}
+
+// ---------- RenewLease ----------
+message RenewLeaseRequest {
+  string subscription_id = 1;
+  string holder_id = 2;
+  uint64 epoch = 3;
+  int64 ttl_seconds = 4;
+}
+
+message RenewLeaseResponse {
+  int64 expires_at_unix = 1;
+}
+
+// ---------- ReleaseLease ----------
+message ReleaseLeaseRequest {
+  string subscription_id = 1;
+  string holder_id = 2;
+  uint64 epoch = 3;
+}
+
+message ReleaseLeaseResponse {}
+
+// ---------- ListReady ----------
+message ListReadyRequest {
+  int32 limit = 1;
+}
+
+message ListReadyResponse {
+  repeated string subscription_ids = 1;
+}
+
+// ---------- GetState ----------
+message GetStateRequest {
+  string subscription_id = 1;
+}
+
+message GetStateResponse {
+  SubscriptionState state = 1;
+}
+
+// ---------- ResetCursor ----------
+message ResetCursorRequest {
+  string subscription_id = 1;
+  uint64 to_position = 2;
+}
+
+message ResetCursorResponse {}

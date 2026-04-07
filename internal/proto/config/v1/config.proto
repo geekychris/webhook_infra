@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package config.v1;
+
+option go_package = "github.com/example/event-gateway/internal/proto/config/v1;configv1";
+
+// ConfigDistributor streams subscription configuration changes to interested
+// services (e.g., the ingestion-router fan-out workers).
+service ConfigDistributor {
+  // Subscribe opens a server-streaming RPC that pushes config snapshots and
+  // incremental updates to the caller.
+  rpc Subscribe(SubscribeRequest) returns (stream ConfigUpdate);
+}
+
+message SubscribeRequest {
+  // Optional: only receive updates for specific subscriber IDs.
+  // If empty, all updates are received.
+  repeated string subscriber_ids = 1;
+}
+
+message ConfigUpdate {
+  enum ChangeType {
+    CHANGE_TYPE_UNSPECIFIED = 0;
+    SNAPSHOT = 1;
+    UPSERT = 2;
+    DELETE = 3;
+  }
+
+  ChangeType change_type = 1;
+
+  // For SNAPSHOT, contains all active subscriptions.
+  // For UPSERT, contains the created/updated subscription.
+  // For DELETE, contains the removed subscription (only id fields populated).
+  repeated SubscriptionConfig subscriptions = 2;
+
+  // Monotonically increasing version for ordering.
+  uint64 version = 3;
+}
+
+message SubscriptionConfig {
+  string id = 1;
+  string subscriber_id = 2;
+  repeated string event_types = 3;
+  string source_filter = 4;
+  repeated string tenant_filter = 5;
+  string delivery_mode = 6;
+  int32 max_batch_size = 7;
+  int32 max_batch_bytes = 8;
+  int32 linger_ms = 9;
+  bool active = 10;
+}

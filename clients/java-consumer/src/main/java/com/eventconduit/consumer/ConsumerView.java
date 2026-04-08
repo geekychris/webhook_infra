@@ -4,7 +4,7 @@ import com.eventconduit.consumer.StreamConsumerService.ConnectionState;
 import com.vaadin.flow.component.*;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
-import com.vaadin.flow.component.combobox.ComboBox;
+import com.vaadin.flow.component.select.Select;
 import com.vaadin.flow.component.details.Details;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.html.*;
@@ -23,6 +23,7 @@ import java.util.function.Consumer;
 
 @Route("")
 @PageTitle("Event Conduit — Java Stream Consumer")
+@com.vaadin.flow.component.page.Push
 public class ConsumerView extends VerticalLayout {
 
     private final StreamConsumerService streamService;
@@ -30,7 +31,7 @@ public class ConsumerView extends VerticalLayout {
     private final UI ui;
 
     private final TextField gatewayField = new TextField("Gateway URL");
-    private final ComboBox<RegistryClient.StreamTarget> subscriptionPicker = new ComboBox<>("Subscription");
+    private final Select<RegistryClient.StreamTarget> subscriptionPicker = new Select<>();
     private final TextField tokenField = new TextField("Auth Token");
     private final NumberField resumeField = new NumberField("Resume After");
     private final Button connectBtn = new Button("Connect");
@@ -86,7 +87,8 @@ public class ConsumerView extends VerticalLayout {
         gatewayField.setValue("ws://localhost:18090/v1/stream");
         gatewayField.setWidth("300px");
 
-        subscriptionPicker.setWidth("400px");
+        subscriptionPicker.setLabel("Subscription");
+        subscriptionPicker.setWidth("450px");
         subscriptionPicker.setPlaceholder("Select a streaming subscription...");
         subscriptionPicker.setItemLabelGenerator(RegistryClient.StreamTarget::displayLabel);
         subscriptionPicker.addValueChangeListener(e -> {

@@ -31,80 +31,99 @@ github.com/example/event-gateway
 
 ### 2.1 System Diagram
 
+```mermaid
+flowchart TD
+    subgraph sources["Upstream Services"]
+        US[Platform Services]
+    end
+
+    subgraph kafka["Apache Kafka"]
+        KE[ecst-events]
+        KS[sendable-events]
+        KM[entity-mappings]
+    end
+
+    subgraph config["Configuration Plane"]
+        PG[(PostgreSQL<br/>subscribers · subscriptions<br/>entity_mappings)]
+        REG[subscriber-registry<br/>REST :8081]
+        CD[config-distributor<br/>gRPC :50051]
+        PG <-->|CRUD| REG
+        PG -->|PG NOTIFY| CD
+    end
+
+    subgraph ingestion["Ingestion"]
+        IR[ingestion-router<br/>Matcher · Entity Resolver<br/>CloudEvent Mapper]
+    end
+
+    subgraph queuing["Queuing"]
+        QW[queue-writer<br/>Kafka → gRPC Append<br/>+ Redis Signal]
+        QS[(subscriber-queue-service<br/>Pebble/RocksDB queues<br/>Leases · TTL :50052)]
+    end
+
+    subgraph delivery["Delivery"]
+        WD[webhook-dispatcher<br/>Redis BZPOPMIN<br/>Batch POST · HMAC]
+        SG[stream-gateway<br/>Redis SUBSCRIBE<br/>WebSocket · Auth :8090]
+    end
+
+    subgraph subscribers["External Subscribers"]
+        WH[Webhook Endpoints<br/>HTTPS POST]
+        ST[Streaming Clients<br/>WebSocket]
+    end
+
+    subgraph cache["Cache"]
+        VK[(Valkey / Redis<br/>Entity mappings<br/>Ready queue<br/>Pub/sub :6379)]
+    end
+
+    ADMIN[admin-api<br/>Dashboard UI :8085]
+
+    US -->|ECST events| KE
+    KE --> IR
+    CD -->|gRPC stream| IR
+    IR -->|matched events| KS
+    IR <-->|entity lookup| VK
+    KS --> QW
+    QW -->|gRPC Append| QS
+    QW -->|ZADD ready + PUBLISH| VK
+    QS -->|gRPC Read/Ack| WD
+    QS -->|gRPC Read/Ack| SG
+    VK -->|BZPOPMIN| WD
+    VK -->|SUBSCRIBE| SG
+    WD -->|CloudEvents batch| WH
+    SG -->|WebSocket frames| ST
+    ADMIN <--> PG
+    ADMIN <--> QS
+    REG -->|Kafka publish| KM
+    KM -->|entity sync| IR
 ```
-┌─────────────────┐
-│ Upstream Services│
-└────────┬────────┘
-         │ ECST events
-         ▼
-┌─────────────────┐     ┌────────────────────┐
-│  Kafka           │     │  PostgreSQL          │
-│  ecst-events     │     │  subscribers         │
-│  sendable-events │     │  subscriptions       │
-│  entity-mappings │     │  entity_mappings     │
-└────────┬────────┘     └──────────┬───────────┘
-         │                         │
-         │              ┌──────────▼───────────┐
-         │              │  subscriber-registry   │ ◄── REST API (port 8081)
-         │              │  (CRUD + migrations)   │
-         │              └──────────┬───────────┘
-         │                   PG NOTIFY │
-         │              ┌──────────▼───────────┐
-         │              │  config-distributor    │ ◄── gRPC stream (port 50051)
-         │              └──────────┬───────────┘
-         │                  gRPC   │ stream
-         ▼                         ▼
-┌─────────────────────────────────────────────┐
-│              ingestion-router                │
-│  Kafka consumer (ecst-events)                │
-│  In-memory Matcher (type/source/tenant)      │
-│  Entity Matcher (send_to/user_id/company_id) │
-│  Redis/Valkey resolver for entity lookups    │
-│  CloudEvent Mapper                           │
-│  Kafka producer (sendable-events)            │
-└────────────────────┬────────────────────────┘
-                     │ sendable-events
-                     ▼
-┌─────────────────────────────────────────────┐
-│              queue-writer                    │
-│  Kafka consumer → gRPC Append               │
-└────────────────────┬────────────────────────┘
-                     │ gRPC
-                     ▼
-┌─────────────────────────────────────────────┐
-│       subscriber-queue-service               │
-│  RocksDB-backed per-subscription queues      │
-│  Delivery lease manager (epoch fencing)      │
-│  Background compaction (cursor + TTL)        │
-│  gRPC API (port 50052)                       │
-└──────────┬──────────────────┬───────────────┘
-           │                  │
-    gRPC   │                  │ gRPC
-           ▼                  ▼
-┌──────────────────┐  ┌──────────────────────┐
-│ webhook-dispatcher│  │   stream-gateway      │
-│ Fair scheduler    │  │   WebSocket server    │
-│ HMAC signing      │  │   Resume/replay       │
-│ Retry + backoff   │  │   ACK protocol        │
-└────────┬─────────┘  └──────────┬───────────┘
-         │                       │
-         ▼                       ▼
-┌──────────────────┐  ┌──────────────────────┐
-│  Webhook          │  │  Streaming            │
-│  Subscribers      │  │  Subscribers          │
-│  (HTTPS POST)     │  │  (WSS)               │
-└──────────────────┘  └──────────────────────┘
 
-┌─────────────────────────────────────────────┐
-│              admin-api                       │
-│  Dashboard UI + REST (port 8085)             │
-│  Pause/resume, replay, stats                 │
-└─────────────────────────────────────────────┘
+### 2.2 Event Delivery Flow
 
-┌──────────────┐
-│   Valkey      │ ◄── Redis-compatible cache
-│  (port 6379)  │     Entity mappings for fast lookup
-└──────────────┘
+```mermaid
+sequenceDiagram
+    participant US as Upstream Service
+    participant K1 as Kafka<br/>ecst-events
+    participant IR as Ingestion Router
+    participant K2 as Kafka<br/>sendable-events
+    participant QW as Queue Writer
+    participant QS as Queue Service
+    participant R as Redis/Valkey
+    participant D as Dispatcher / Gateway
+    participant S as Subscriber
+
+    US->>K1: Publish ECST event
+    K1->>IR: Consume
+    IR->>IR: Match subscriptions<br/>(type + source + tenant + entity)
+    IR->>IR: Map ECST → CloudEvent
+    IR->>K2: Publish SendableEvent<br/>(keyed by subscription_id)
+    K2->>QW: Consume
+    QW->>QS: gRPC Append
+    QW->>R: ZADD dispatch:ready<br/>PUBLISH notify:sub_id
+    R-->>D: BZPOPMIN / SUBSCRIBE<br/>(instant wake)
+    D->>QS: gRPC Read (batch)
+    QS-->>D: Events
+    D->>S: HTTP POST batch / WebSocket frame
+    S-->>D: 2xx / ACK
+    D->>QS: gRPC Ack (advance cursor)
 ```
 
 ### 2.2 Service Inventory
@@ -191,18 +210,22 @@ After mapping, the subscriber receives:
 
 ### 3.3 Pipeline Stages
 
+```mermaid
+flowchart LR
+    A[ECST event<br/>on Kafka] --> B[Ingestion Router<br/>consume + deserialize]
+    B --> C{Match<br/>subscriptions}
+    C -->|type/source/tenant<br/>+ entity routing| D[Map ECST →<br/>CloudEvent]
+    D --> E[Publish to<br/>sendable-events]
+    E --> F[Queue Writer<br/>append to queue]
+    F --> G[Redis signal<br/>ZADD + PUBLISH]
+    G --> H{Delivery<br/>mode?}
+    H -->|webhook| I[Dispatcher wakes<br/>reads batch<br/>HTTP POST + HMAC]
+    H -->|stream| J[Gateway wakes<br/>reads events<br/>WebSocket push]
+    I --> K[2xx → ACK<br/>fail → backoff + retry]
+    J --> L[Client ACK<br/>cursor advances]
 ```
- 1. ECST event arrives on Kafka
- 2. Ingestion router consumes and deserializes
- 3. Subscription matching (multi-dimensional — see Section 6)
- 4. ECST → CloudEvent mapping (with optional per-type hooks — see Section 6.6)
- 5. SendableEvent published to sendable-events (keyed by subscription_id)
- 6. Queue writer appends to RocksDB-backed per-subscription durable queue
- 7. Webhook dispatcher or stream gateway delivers to subscriber
- 8. On 2xx ACK: queue cursor advances
- 9. On failure: exponential backoff, retry later
-10. Background compaction removes: acked entries + entries past TTL (default 30 days)
-```
+
+**Background:** TTL compaction removes events older than the retention period (default 30 days).
 
 ---
 
@@ -414,6 +437,32 @@ Open http://localhost:18085/ in a browser for a web-based admin dashboard with:
 
 The ingestion router determines which subscribers receive each event using a multi-layered matching system. Matching is designed to be **fast** (in-memory indexes + Redis) and **extensible** (new matching dimensions can be added).
 
+```mermaid
+flowchart TD
+    E[Incoming ECST Event] --> M1
+
+    subgraph standard["Standard Matching (in-memory)"]
+        M1[Event Type Index<br/>O(1) hash map] --> M2[Source Filter<br/>glob pattern]
+        M2 --> M3[Tenant Filter<br/>set membership]
+    end
+
+    subgraph entity["Entity Routing (Redis)"]
+        M4[send_to field<br/>direct subscriber IDs]
+        M5[user_id lookup<br/>Redis SMEMBERS]
+        M6[company_id lookup<br/>Redis SMEMBERS]
+    end
+
+    M3 --> UNION
+    E --> M4
+    E --> M5
+    E --> M6
+    M4 --> UNION
+    M5 --> UNION
+    M6 --> UNION
+
+    UNION[Deduplicate<br/>by subscription_id] --> RESULT[Matched Subscriptions]
+```
+
 ### 6.1 Standard Matching (In-Memory)
 
 Standard matching uses three dimensions evaluated in order:
@@ -538,6 +587,30 @@ Entity mappings are cached in **Valkey** (Redis-compatible) for sub-millisecond 
 ```
 Key: entity:user:u_5678       → SET { "sub-uuid-1", "sub-uuid-2" }
 Key: entity:company:c_acme    → SET { "sub-uuid-1", "sub-uuid-3" }
+```
+
+```mermaid
+flowchart LR
+    subgraph layer1["Layer 1: Startup Warm"]
+        BOOT[Router boots] --> HTTP[GET /v1/entity-mappings/all]
+        HTTP --> FLUSH[FlushAndReload Redis]
+    end
+
+    subgraph layer2["Layer 2: Real-time Kafka Sync"]
+        API[REST API create/delete] --> DB[(PostgreSQL)]
+        API --> KF[Kafka entity-mappings]
+        KF --> SYNC[Router syncer]
+        SYNC --> REDIS_INC[SADD / SREM]
+    end
+
+    subgraph layer3["Layer 3: Periodic Reconciliation"]
+        TICK[Every 5 min] --> FULL[Flush + reload from DB]
+    end
+
+    FLUSH --> REDIS[(Valkey / Redis)]
+    REDIS_INC --> REDIS
+    FULL --> REDIS
+    REDIS --> LOOKUP[Ingestion Router<br/>SMEMBERS on each event]
 ```
 
 The cache is kept in sync through **three layers**:
@@ -778,6 +851,41 @@ The WebSocket carries JSON text frames in both directions.
 
 ### 8.4 Position Tracking and Resume
 
+```mermaid
+sequenceDiagram
+    participant C as Streaming Client
+    participant G as Stream Gateway
+    participant Q as Queue Service
+
+    Note over C: Connect with resume_after=0
+    C->>G: WebSocket connect<br/>?subscription_id=X&token=Y
+    G->>Q: AcquireLease(X)
+    Q-->>G: epoch=1
+
+    loop Event delivery
+        G->>Q: Read(after=cursor)
+        Q-->>G: events [pos=41, pos=42]
+        G->>C: {"type":"event","position":41,...}
+        G->>C: {"type":"event","position":42,...}
+        C->>C: Process event 41
+        C->>C: Persist position 41 to disk
+        C->>G: {"type":"ack","position":41}
+        C->>C: Process event 42
+        C->>C: Persist position 42 to disk
+        C->>G: {"type":"ack","position":42}
+        G->>Q: Ack(position=42)
+    end
+
+    Note over C: Connection drops!
+    Note over C: Read position 42 from disk
+
+    C->>G: Reconnect with<br/>?resume_after=42
+    G->>Q: AcquireLease(X)
+    G->>Q: Read(after=42)
+    Q-->>G: events [pos=43, pos=44, ...]
+    G->>C: {"type":"event","position":43,...}
+```
+
 **The client is responsible for tracking the last successfully processed position.** This is the critical field for resume:
 
 ```
@@ -1007,14 +1115,8 @@ Subscription "sub_abc":
 
 A background goroutine runs every 30 seconds with two compaction passes:
 
-**Pass 1 — Cursor-based compaction:**
-Deletes all entries at or below the acked cursor. These events were successfully delivered and acknowledged, so they are no longer needed.
+**TTL-based compaction only** (cursor-based compaction is disabled to preserve replay capability):
 
-```
-DeleteRange(q\x00<subID>\x00<0>, q\x00<subID>\x00<cursor+1>)
-```
-
-**Pass 2 — TTL-based compaction:**
 Scans each subscription's queue from the oldest entry. Deletes entries whose enqueue timestamp is older than `now - QUEUE_TTL`. This catches:
 - Events from **abandoned subscriptions** that will never be delivered
 - Events from **paused subscriptions** that have been idle for too long
@@ -1048,6 +1150,22 @@ This allows TTL compaction to read the timestamp without deserializing the event
 ### 10.5 Delivery Leases
 
 Only one pod may deliver to a subscription at a time. This is enforced via **epoch-fenced leases**:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Unowned
+    Unowned --> Owned: AcquireLease → epoch N
+    Owned --> Owned: RenewLease (heartbeat)
+    Owned --> Expired: missed heartbeat
+    Expired --> Unowned: lease timeout
+    Owned --> Released: ReleaseLease
+    Released --> Unowned
+
+    note right of Owned
+        Read/Ack must include epoch N.
+        Stale epoch → FAILED_PRECONDITION.
+    end note
+```
 
 1. Dispatcher acquires lease → gets epoch N
 2. All Read/Ack operations must include epoch N

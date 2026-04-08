@@ -181,6 +181,8 @@
   .btn-orange:hover { background: rgba(245,158,11,0.25); }
   .btn-red { background: rgba(239,68,68,0.15); color: var(--red); }
   .btn-red:hover { background: rgba(239,68,68,0.25); }
+  .btn-blue { background: rgba(59,130,246,0.15); color: var(--accent); }
+  .btn-blue:hover { background: rgba(59,130,246,0.25); }
 
   .toolbar {
     display: flex;
@@ -283,7 +285,7 @@
 <body>
 
 <aside class="sidebar">
-  <div class="sidebar-header"><img src="/logo.png" alt="Event Conduit" style="height:32px;vertical-align:middle;margin-right:8px;">Event Conduit <span>Admin</span></div>
+  <div class="sidebar-header"><img src="/logo.png" alt="Event Conduit" style="height:80px;display:block;margin:0 auto 12px auto;"><span style="display:block;text-align:center;">Admin</span></div>
   <nav>
     <a class="nav-link active" data-page="dashboard"><span class="nav-icon">&#9632;</span> Dashboard</a>
     <a class="nav-link" data-page="subscribers"><span class="nav-icon">&#9706;</span> Subscribers</a>
@@ -321,12 +323,12 @@
       <div id="sub-error"></div>
       <div class="toolbar">
         <h2>Subscribers</h2>
-        <button class="btn btn-primary" onclick="openModal('subscriber-modal')">Create Subscriber</button>
+        <button class="btn btn-primary" onclick="openEditSubscriber(null)">Create Subscriber</button>
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>ID</th><th>Name</th><th>Webhook URL</th><th>Created</th></tr></thead>
-          <tbody id="subscribers-tbody"><tr><td colspan="4" class="loading">Loading...</td></tr></tbody>
+          <thead><tr><th>ID</th><th>Name</th><th>Webhook URL</th><th>Stream Auth</th><th>Created</th><th>Actions</th></tr></thead>
+          <tbody id="subscribers-tbody"><tr><td colspan="6" class="loading">Loading...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -336,12 +338,12 @@
       <div id="subs-error"></div>
       <div class="toolbar">
         <h2>Subscriptions</h2>
-        <button class="btn btn-primary" onclick="openModal('subscription-modal')">Create Subscription</button>
+        <button class="btn btn-primary" onclick="openEditSubscription(null)">Create Subscription</button>
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>ID</th><th>Subscriber</th><th>Event Types</th><th>Mode</th><th>Status</th><th>Actions</th></tr></thead>
-          <tbody id="subscriptions-tbody"><tr><td colspan="6" class="loading">Loading...</td></tr></tbody>
+          <thead><tr><th>ID</th><th>Subscriber</th><th>Event Types</th><th>Source Filter</th><th>Mode</th><th>Batch Size</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="subscriptions-tbody"><tr><td colspan="8" class="loading">Loading...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -397,49 +399,85 @@
   </div>
 </div>
 
-<!-- Create Subscriber Modal -->
+<!-- Subscriber Modal (create + edit) -->
 <div id="subscriber-modal" class="modal-overlay" onclick="if(event.target===this)closeModal(this.id)">
   <div class="modal">
-    <h3>Create Subscriber</h3>
+    <h3 id="sub-modal-title">Create Subscriber</h3>
     <div id="sub-modal-error"></div>
+    <input type="hidden" id="sub-edit-id" value="">
+    <div class="form-group">
+      <label>ID <span style="color:var(--text-secondary);font-size:11px">(optional — auto-generated if blank)</span></label>
+      <input type="text" id="sub-id" placeholder="partner-acme-prod">
+    </div>
     <div class="form-group">
       <label>Name</label>
-      <input type="text" id="sub-name" placeholder="My Service">
+      <input type="text" id="sub-name" placeholder="Acme Corp Production">
     </div>
     <div class="form-group">
       <label>Webhook URL</label>
       <input type="url" id="sub-webhook-url" placeholder="https://example.com/webhook">
     </div>
+    <div class="form-group">
+      <label>Stream Auth Token <span style="color:var(--text-secondary);font-size:11px">(for streaming subscriptions)</span></label>
+      <input type="text" id="sub-stream-auth" placeholder="">
+    </div>
     <div class="modal-actions">
       <button class="btn btn-cancel" onclick="closeModal('subscriber-modal')">Cancel</button>
-      <button class="btn btn-primary" onclick="createSubscriber()">Create</button>
+      <button class="btn btn-primary" id="sub-modal-submit" onclick="saveSubscriber()">Create</button>
     </div>
   </div>
 </div>
 
-<!-- Create Subscription Modal -->
+<!-- Subscription Modal (create + edit) -->
 <div id="subscription-modal" class="modal-overlay" onclick="if(event.target===this)closeModal(this.id)">
-  <div class="modal">
-    <h3>Create Subscription</h3>
+  <div class="modal" style="max-width:550px;">
+    <h3 id="subs-modal-title">Create Subscription</h3>
     <div id="subs-modal-error"></div>
+    <input type="hidden" id="subs-edit-id" value="">
+    <div class="form-group">
+      <label>ID <span style="color:var(--text-secondary);font-size:11px">(optional)</span></label>
+      <input type="text" id="subs-id" placeholder="acme-webhook-invoices">
+    </div>
     <div class="form-group">
       <label>Subscriber ID</label>
-      <input type="text" id="subs-subscriber-id" placeholder="subscriber UUID">
-    </div>
-    <div class="form-group">
-      <label>Event Types (comma-separated)</label>
-      <input type="text" id="subs-event-types" placeholder="order.created, order.updated">
-    </div>
-    <div class="form-group">
-      <label>Delivery Mode</label>
-      <select id="subs-delivery-mode">
-        <option value="webhook">Webhook</option>
-        <option value="stream">Stream</option>
+      <select id="subs-subscriber-id" style="width:100%;padding:8px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);">
+        <option value="">-- select --</option>
       </select>
+    </div>
+    <div class="form-group">
+      <label>Event Types <span style="color:var(--text-secondary);font-size:11px">(comma-separated)</span></label>
+      <input type="text" id="subs-event-types" placeholder="invoice.paid, order.created, payment.failed">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div class="form-group">
+        <label>Delivery Mode</label>
+        <select id="subs-delivery-mode" style="width:100%;padding:8px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);">
+          <option value="webhook">Webhook</option>
+          <option value="stream">Stream (WebSocket)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Source Filter</label>
+        <input type="text" id="subs-source-filter" placeholder="*" value="*">
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+      <div class="form-group">
+        <label>Max Batch Size</label>
+        <input type="number" id="subs-batch-size" value="100">
+      </div>
+      <div class="form-group">
+        <label>Max Batch Bytes</label>
+        <input type="number" id="subs-batch-bytes" value="1048576">
+      </div>
+      <div class="form-group">
+        <label>Linger (ms)</label>
+        <input type="number" id="subs-linger" value="100">
+      </div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-cancel" onclick="closeModal('subscription-modal')">Cancel</button>
-      <button class="btn btn-primary" onclick="createSubscription()">Create</button>
+      <button class="btn btn-primary" id="subs-modal-submit" onclick="saveSubscription()">Create</button>
     </div>
   </div>
 </div>
@@ -621,83 +659,237 @@ async function loadDashboard() {
 
 // ---- Subscribers ----
 
+let subscribersList = [];
+
 async function loadSubscribers() {
   showError('sub-error', '');
   const tbody = document.getElementById('subscribers-tbody');
   try {
     const data = await api(REGISTRY_API + '/v1/subscribers');
-    const list = Array.isArray(data) ? data : [];
-    if (list.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="4" class="loading">No subscribers found</td></tr>';
+    subscribersList = Array.isArray(data) ? data : [];
+    if (subscribersList.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="loading">No subscribers. Click Create Subscriber to add one.</td></tr>';
       return;
     }
-    tbody.innerHTML = list.map(s => `<tr>
-      <td><code>${escHtml(s.id || '')}</code></td>
-      <td>${escHtml(s.name || '')}</td>
-      <td><code>${escHtml(s.webhook_url || '')}</code></td>
-      <td>${escHtml(s.created_at || '')}</td>
+    tbody.innerHTML = subscribersList.map(s => `<tr>
+      <td><code style="font-size:11px">${escHtml(s.id || '')}</code></td>
+      <td><strong>${escHtml(s.name || '')}</strong></td>
+      <td><code style="font-size:11px">${escHtml(s.webhook_url || '(none)')}</code></td>
+      <td>${escHtml(s.stream_auth || '(none)')}</td>
+      <td>${(s.created_at||'').substring(0,19)}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-sm btn-blue" onclick="openEditSubscriber('${s.id}')">Edit</button>
+        <button class="btn btn-sm btn-red" onclick="deleteSubscriber('${s.id}','${escHtml(s.name)}')">Delete</button>
+      </td>
     </tr>`).join('');
   } catch (e) {
     showError('sub-error', e.message);
-    tbody.innerHTML = '<tr><td colspan="4" class="loading">Failed to load</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="loading">Failed to load</td></tr>';
   }
 }
 
-async function createSubscriber() {
+function openEditSubscriber(id) {
   showError('sub-modal-error', '');
-  const name = document.getElementById('sub-name').value.trim();
-  const url = document.getElementById('sub-webhook-url').value.trim();
-  if (!name || !url) {
-    showError('sub-modal-error', 'Name and Webhook URL are required');
-    return;
-  }
-  try {
-    await api(REGISTRY_API + '/v1/subscribers', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, webhook_url: url }),
-    });
-    closeModal('subscriber-modal');
+  const isEdit = !!id;
+  document.getElementById('sub-modal-title').textContent = isEdit ? 'Edit Subscriber' : 'Create Subscriber';
+  document.getElementById('sub-modal-submit').textContent = isEdit ? 'Save' : 'Create';
+  document.getElementById('sub-edit-id').value = id || '';
+
+  if (isEdit) {
+    const s = subscribersList.find(x => x.id === id);
+    if (s) {
+      document.getElementById('sub-id').value = s.id;
+      document.getElementById('sub-id').disabled = true;
+      document.getElementById('sub-name').value = s.name || '';
+      document.getElementById('sub-webhook-url').value = s.webhook_url || '';
+      document.getElementById('sub-stream-auth').value = s.stream_auth || '';
+    }
+  } else {
+    document.getElementById('sub-id').value = '';
+    document.getElementById('sub-id').disabled = false;
     document.getElementById('sub-name').value = '';
     document.getElementById('sub-webhook-url').value = '';
+    document.getElementById('sub-stream-auth').value = '';
+  }
+  openModal('subscriber-modal');
+}
+
+async function saveSubscriber() {
+  showError('sub-modal-error', '');
+  const editId = document.getElementById('sub-edit-id').value;
+  const isEdit = !!editId;
+
+  const body = {
+    name: document.getElementById('sub-name').value.trim(),
+    webhook_url: document.getElementById('sub-webhook-url').value.trim(),
+    stream_auth: document.getElementById('sub-stream-auth').value.trim(),
+  };
+  if (!body.name) { showError('sub-modal-error', 'Name is required'); return; }
+
+  try {
+    if (isEdit) {
+      await api(REGISTRY_API + '/v1/subscribers/' + editId, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    } else {
+      const customId = document.getElementById('sub-id').value.trim();
+      if (customId) body.id = customId;
+      await api(REGISTRY_API + '/v1/subscribers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    }
+    closeModal('subscriber-modal');
     loadSubscribers();
   } catch (e) {
     showError('sub-modal-error', e.message);
   }
 }
 
+async function deleteSubscriber(id, name) {
+  if (!confirm('Delete subscriber "' + name + '"? This will also delete all their subscriptions.')) return;
+  try {
+    await api(REGISTRY_API + '/v1/subscribers/' + id, { method: 'DELETE' });
+    loadSubscribers();
+    loadSubscriptions();
+  } catch (e) {
+    showError('sub-error', e.message);
+  }
+}
+
 // ---- Subscriptions ----
+
+let subscriptionsList = [];
 
 async function loadSubscriptions() {
   showError('subs-error', '');
   const tbody = document.getElementById('subscriptions-tbody');
+
+  // Also populate the subscriber dropdown in the modal
+  try {
+    const subData = await api(REGISTRY_API + '/v1/subscribers');
+    const select = document.getElementById('subs-subscriber-id');
+    const current = select.value;
+    select.innerHTML = '<option value="">-- select subscriber --</option>';
+    (Array.isArray(subData) ? subData : []).forEach(s => {
+      select.innerHTML += '<option value="' + escHtml(s.id) + '">' + escHtml(s.name) + ' (' + escHtml(s.id).substring(0,12) + ')</option>';
+    });
+    if (current) select.value = current;
+  } catch(e) {}
+
   try {
     const data = await api(ADMIN_API + '/v1/admin/subscriptions');
-    const list = Array.isArray(data) ? data : [];
-    if (list.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="6" class="loading">No subscriptions found</td></tr>';
+    subscriptionsList = Array.isArray(data) ? data : [];
+    if (subscriptionsList.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" class="loading">No subscriptions. Create a subscriber first, then add subscriptions.</td></tr>';
       return;
     }
-    tbody.innerHTML = list.map(s => {
+    tbody.innerHTML = subscriptionsList.map(s => {
       const types = Array.isArray(s.event_types) ? s.event_types.join(', ') : '';
       const active = s.active;
+      const modeColor = s.delivery_mode === 'webhook' ? 'badge-blue' : 'badge-green';
       return `<tr>
-        <td><code>${escHtml(s.id)}</code></td>
-        <td><code>${escHtml(s.subscriber_id)}</code></td>
-        <td>${escHtml(types)}</td>
-        <td><span class="badge badge-blue">${escHtml(s.delivery_mode)}</span></td>
+        <td><code style="font-size:11px">${escHtml(s.id)}</code></td>
+        <td><code style="font-size:11px">${escHtml(s.subscriber_id).substring(0,16)}...</code></td>
+        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${escHtml(types)}</td>
+        <td><code>${escHtml(s.source_filter || '*')}</code></td>
+        <td><span class="badge ${modeColor}">${escHtml(s.delivery_mode)}</span></td>
+        <td>${s.max_batch_size || 100}</td>
         <td><span class="badge ${active ? 'badge-green' : 'badge-red'}">${active ? 'Active' : 'Paused'}</span></td>
-        <td>
+        <td style="white-space:nowrap">
+          <button class="btn btn-sm btn-blue" onclick="openEditSubscription('${s.id}')">Edit</button>
           ${active
-            ? `<button class="btn btn-sm btn-orange" onclick="toggleSubscription('${s.id}','pause')">Pause</button>`
-            : `<button class="btn btn-sm btn-green" onclick="toggleSubscription('${s.id}','resume')">Resume</button>`
+            ? '<button class="btn btn-sm btn-orange" onclick="toggleSubscription(\'' + s.id + '\',\'pause\')">Pause</button>'
+            : '<button class="btn btn-sm btn-green" onclick="toggleSubscription(\'' + s.id + '\',\'resume\')">Resume</button>'
           }
+          <button class="btn btn-sm btn-red" onclick="deleteSubscription('${s.id}')">Delete</button>
         </td>
       </tr>`;
     }).join('');
   } catch (e) {
     showError('subs-error', e.message);
-    tbody.innerHTML = '<tr><td colspan="6" class="loading">Failed to load</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="loading">Failed to load</td></tr>';
+  }
+}
+
+function openEditSubscription(id) {
+  showError('subs-modal-error', '');
+  const isEdit = !!id;
+  document.getElementById('subs-modal-title').textContent = isEdit ? 'Edit Subscription' : 'Create Subscription';
+  document.getElementById('subs-modal-submit').textContent = isEdit ? 'Save' : 'Create';
+  document.getElementById('subs-edit-id').value = id || '';
+
+  if (isEdit) {
+    const s = subscriptionsList.find(x => x.id === id);
+    if (s) {
+      document.getElementById('subs-id').value = s.id;
+      document.getElementById('subs-id').disabled = true;
+      document.getElementById('subs-subscriber-id').value = s.subscriber_id;
+      document.getElementById('subs-subscriber-id').disabled = true;
+      document.getElementById('subs-event-types').value = Array.isArray(s.event_types) ? s.event_types.join(', ') : '';
+      document.getElementById('subs-delivery-mode').value = s.delivery_mode || 'webhook';
+      document.getElementById('subs-source-filter').value = s.source_filter || '*';
+      document.getElementById('subs-batch-size').value = s.max_batch_size || 100;
+      document.getElementById('subs-batch-bytes').value = s.max_batch_bytes || 1048576;
+      document.getElementById('subs-linger').value = s.linger_ms || 100;
+    }
+  } else {
+    document.getElementById('subs-id').value = '';
+    document.getElementById('subs-id').disabled = false;
+    document.getElementById('subs-subscriber-id').disabled = false;
+    document.getElementById('subs-event-types').value = '';
+    document.getElementById('subs-delivery-mode').value = 'webhook';
+    document.getElementById('subs-source-filter').value = '*';
+    document.getElementById('subs-batch-size').value = '100';
+    document.getElementById('subs-batch-bytes').value = '1048576';
+    document.getElementById('subs-linger').value = '100';
+  }
+  openModal('subscription-modal');
+}
+
+async function saveSubscription() {
+  showError('subs-modal-error', '');
+  const editId = document.getElementById('subs-edit-id').value;
+  const isEdit = !!editId;
+
+  const subscriberId = document.getElementById('subs-subscriber-id').value;
+  const eventTypesRaw = document.getElementById('subs-event-types').value.trim();
+  if (!subscriberId) { showError('subs-modal-error', 'Select a subscriber'); return; }
+  if (!eventTypesRaw) { showError('subs-modal-error', 'Enter at least one event type'); return; }
+
+  const eventTypes = eventTypesRaw.split(',').map(t => t.trim()).filter(Boolean);
+  const body = {
+    event_types: eventTypes,
+    delivery_mode: document.getElementById('subs-delivery-mode').value,
+    source_filter: document.getElementById('subs-source-filter').value.trim() || '*',
+    max_batch_size: parseInt(document.getElementById('subs-batch-size').value) || 100,
+    max_batch_bytes: parseInt(document.getElementById('subs-batch-bytes').value) || 1048576,
+    linger_ms: parseInt(document.getElementById('subs-linger').value) || 100,
+  };
+
+  try {
+    if (isEdit) {
+      await api(REGISTRY_API + '/v1/subscriptions/' + editId, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    } else {
+      const customId = document.getElementById('subs-id').value.trim();
+      if (customId) body.id = customId;
+      await api(REGISTRY_API + '/v1/subscribers/' + subscriberId + '/subscriptions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    }
+    closeModal('subscription-modal');
+    loadSubscriptions();
+  } catch (e) {
+    showError('subs-modal-error', e.message);
   }
 }
 
@@ -710,28 +902,13 @@ async function toggleSubscription(id, action) {
   }
 }
 
-async function createSubscription() {
-  showError('subs-modal-error', '');
-  const subscriberId = document.getElementById('subs-subscriber-id').value.trim();
-  const eventTypesRaw = document.getElementById('subs-event-types').value.trim();
-  const deliveryMode = document.getElementById('subs-delivery-mode').value;
-  if (!subscriberId || !eventTypesRaw) {
-    showError('subs-modal-error', 'Subscriber ID and Event Types are required');
-    return;
-  }
-  const eventTypes = eventTypesRaw.split(',').map(t => t.trim()).filter(Boolean);
+async function deleteSubscription(id) {
+  if (!confirm('Delete subscription ' + id + '?')) return;
   try {
-    await api(REGISTRY_API + '/v1/subscribers/' + subscriberId + '/subscriptions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ event_types: eventTypes, delivery_mode: deliveryMode }),
-    });
-    closeModal('subscription-modal');
-    document.getElementById('subs-subscriber-id').value = '';
-    document.getElementById('subs-event-types').value = '';
+    await api(REGISTRY_API + '/v1/subscriptions/' + id, { method: 'DELETE' });
     loadSubscriptions();
   } catch (e) {
-    showError('subs-modal-error', e.message);
+    showError('subs-error', e.message);
   }
 }
 

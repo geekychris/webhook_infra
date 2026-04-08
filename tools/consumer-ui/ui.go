@@ -6,7 +6,7 @@ import (
 	"net/http"
 )
 
-//go:embed static/index.html
+//go:embed static/*
 var staticFiles embed.FS
 
 // UIHandler returns an http.Handler that serves the embedded consumer UI.

@@ -53,7 +53,10 @@ func main() {
 	r.Use(middleware.RealIP)
 	r.Mount("/", health.Handler(nil))
 
-	r.Get("/", UIHandler().ServeHTTP)
+	// Serve the embedded UI (index.html, logo.png, etc.)
+	uiHandler := UIHandler()
+	r.Get("/", uiHandler.ServeHTTP)
+	r.Get("/logo.png", uiHandler.ServeHTTP)
 
 	r.Route("/v1/admin", func(r chi.Router) {
 		r.Get("/subscriptions", h.ListSubscriptions)

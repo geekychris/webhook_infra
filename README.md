@@ -48,11 +48,12 @@ Upstream Services → Kafka (ecst-events)
 
 | Tool | Port | Purpose |
 |------|------|---------|
-| **producer-ui** | 18070 | Web UI to craft and publish test events, with targeting panel showing active subscriptions |
-| **consumer-ui** | 18071 | Split-screen web UI: webhook receiver (with batch grouping, HMAC display, raw JSON) + streaming consumer with subscription selector |
-| **event-generator** | — | Synthetic ECST event producer (configurable rate) |
-| **webhook-subscriber** | 19090 | Simple webhook receiver for automated testing |
-| **stream-subscriber** | — | Simple WebSocket consumer for automated testing |
+| **producer-ui** | 18070 | Web UI for publishing test events — single event builder + configurable batch generator (count, types, tenants, sources) |
+| **consumer-ui** | 18071 | Split-screen web UI: webhook receiver (batch grouping, HMAC, raw JSON) + streaming consumer with subscription picker |
+| **java-consumer** | 8072 | Java/Spring Boot/Vaadin streaming consumer with live event grid, auto-reconnect, persistent position tracking |
+| **webhook-subscriber** | 19090 | Simple webhook receiver for automated E2E testing |
+
+Events are only generated when you press a button in the producer UI — there is no background event generator.
 
 ## Quick Start
 
@@ -252,12 +253,12 @@ webhooks/
 │   ├── subscriber-registry/     #   CRUD API + entity mappings
 │   └── webhook-dispatcher/      #   Redis BZPOPMIN → batch delivery
 ├── tools/                       # Development & test UI tools
-│   ├── producer-ui/             #   Web UI for publishing test events
-│   └── consumer-ui/             #   Split-screen webhook + streaming consumer
-├── synthetic/                   # Automated test generators
-│   ├── event-generator/         #   Synthetic ECST event producer
-│   ├── webhook-subscriber/      #   Test webhook receiver
-│   └── stream-subscriber/       #   Test WebSocket consumer
+│   ├── producer-ui/             #   Web UI: event builder + configurable batch generator
+│   └── consumer-ui/             #   Web UI: webhook receiver + streaming consumer
+├── clients/
+│   └── java-consumer/           #   Java/Spring Boot/Vaadin streaming consumer
+├── synthetic/
+│   └── webhook-subscriber/      #   Simple webhook receiver for E2E tests
 ├── examples/
 │   └── stream-client/           #   Example Go streaming client
 ├── deploy/

@@ -719,26 +719,55 @@ Subscribers **must** handle duplicate events. Deduplicate using:
 
 ## 8. Implementing a Streaming Consumer
 
-### 8.1 Connection
+Streaming consumers connect to the stream-gateway via WebSocket and receive events in real-time. The **client initiates the connection** and is responsible for tracking its own position so it can resume after disconnects.
 
-Connect via WebSocket:
+### 8.1 Authentication
+
+Each subscriber has an auto-generated stream auth token (`stk_...` format) stored in the `stream_auth` field. The token is created when the subscriber is registered and can be viewed/rotated in the admin UI.
+
+Provide the token via either:
+- **Query parameter:** `?token=stk_abc123...`
+- **Authorization header:** `Authorization: Bearer stk_abc123...`
+
+The gateway validates the token against the subscriber's `stream_auth` field in the registry. Invalid tokens are rejected with HTTP 403 before the WebSocket upgrade.
+
+### 8.2 Connection
 
 ```
-ws://host:18090/v1/stream?subscription_id=<id>&token=<auth>&resume_after=<position>
+ws://host:18090/v1/stream?subscription_id=<id>&token=<token>
+wss://host:18090/v1/stream?subscription_id=<id>&token=<token>  (with TLS)
 ```
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `subscription_id` | Yes | UUID of the streaming subscription |
-| `token` | Yes | Auth token for the subscriber |
-| `resume_after` | No | Last received position (0 = start from beginning) |
+| `subscription_id` | Yes | ID of a streaming subscription (`delivery_mode=stream`) |
+| `token` | Yes | Subscriber's `stream_auth` token |
+| `resume_from` | No | Start from this position **inclusive** (e.g., `resume_from=47` delivers 47, 48, 49...) |
+| `resume_after` | No | Start after this position **exclusive** (e.g., `resume_after=47` delivers 48, 49, 50...) |
 
-### 8.2 Protocol
+If neither resume parameter is provided, delivery starts from the next undelivered event.
 
-**Server → Client (events):**
+### 8.3 Protocol
+
+The WebSocket carries JSON text frames in both directions.
+
+**Server → Client (event delivery):**
 
 ```json
-{"type": "event", "position": 42, "event": {"specversion": "1.0", "id": "evt1", ...}}
+{
+  "type": "event",
+  "position": 42,
+  "event": {
+    "specversion": "1.0",
+    "id": "evt-abc123",
+    "type": "invoice.paid",
+    "source": "billing-service",
+    "time": "2026-04-08T12:00:00Z",
+    "subject": "invoice_9001",
+    "datacontenttype": "application/json",
+    "data": {"amount": 125.00, "currency": "USD"}
+  }
+}
 ```
 
 **Client → Server (acknowledgment):**
@@ -747,38 +776,120 @@ ws://host:18090/v1/stream?subscription_id=<id>&token=<auth>&resume_after=<positi
 {"type": "ack", "position": 42}
 ```
 
-### 8.3 Example Client (Go)
+### 8.4 Position Tracking and Resume
 
-```go
-conn, _, err := websocket.Dial(ctx, url, nil)
-if err != nil { log.Fatal(err) }
-defer conn.Close(websocket.StatusNormalClosure, "bye")
+**The client is responsible for tracking the last successfully processed position.** This is the critical field for resume:
 
-for {
-    _, data, err := conn.Read(ctx)
-    if err != nil { break }
-
-    var msg struct {
-        Type     string          `json:"type"`
-        Position uint64          `json:"position"`
-        Event    json.RawMessage `json:"event"`
-    }
-    json.Unmarshal(data, &msg)
-
-    // Process event...
-    processEvent(msg.Event)
-
-    // Send ACK
-    ack, _ := json.Marshal(map[string]interface{}{"type": "ack", "position": msg.Position})
-    conn.Write(ctx, websocket.MessageText, ack)
-}
+```
+Stream message → position: 42  ← TRACK THIS
 ```
 
-### 8.4 Resume After Disconnect
+The correct flow:
 
-On reconnect, pass `resume_after=<last_acked_position>` to resume from where you left off. The server replays any events after that position. Duplicates are possible around reconnect boundaries.
+```
+1. Receive event with position=42
+2. Process the event in your application
+3. Persist position 42 to durable storage (file, database, etc.)
+4. Send ACK to server: {"type":"ack","position":42}
 
-A complete working example is available at `examples/stream-client/main.go`.
+On disconnect + reconnect:
+5. Read position 42 from your storage
+6. Connect with ?resume_after=42
+7. Server delivers events 43, 44, 45...
+```
+
+If you want to re-read event 42 (replay), use `?resume_from=42`.
+
+**Important:** ACK only after you've persisted the position. If you ACK first and then crash before persisting, you lose track of where you were.
+
+Events are retained in the queue for the configured TTL (default 30 days), so replay is possible within that window regardless of ACK status.
+
+### 8.5 At-Least-Once Delivery
+
+If the client crashes between receiving an event and sending the ACK:
+- The server does not advance the cursor for that event
+- On reconnect, the event will be redelivered
+- The client may see the same event twice
+
+**Clients must be idempotent.** Deduplicate using the CloudEvent `id` field.
+
+### 8.6 One Consumer Per Subscription
+
+The delivery lease system enforces **one active consumer per subscription**. If a second client connects to the same subscription, it receives "failed to acquire lease". For multiple consumers processing the same events, create separate subscriptions with the same event types.
+
+### 8.7 Example: Go Client
+
+A complete working example is at `examples/stream-client/main.go`:
+
+```bash
+go run ./examples/stream-client \
+  -subscription <subscription-id> \
+  -token <stream-auth-token> \
+  -gateway ws://localhost:18090/v1/stream \
+  -resume-after 0
+```
+
+### 8.8 Example: Java Client (Spring Boot + Vaadin)
+
+A full Java streaming consumer with a Vaadin Flow web UI is at `clients/java-consumer/`:
+
+```bash
+cd clients/java-consumer
+mvn spring-boot:run
+# Open http://localhost:8072
+```
+
+Features:
+- **Subscription picker** — fetches available streaming subscriptions from the admin API
+- **Auto-fill token** — clicking a subscription populates the auth token
+- **Live event grid** — position, type, source, subject, ID, receive time
+- **Click-to-inspect** — click any row to see the full CloudEvent JSON
+- **Persistent position tracking** — last processed position saved to `data/stream-positions.txt`, survives JVM restarts
+- **Auto-reconnect** — reconnects from the persisted position after disconnection
+- **Proper ACK ordering** — ACK sent only after processing + position persistence
+
+### 8.9 Example: Minimal Python Client
+
+```python
+import json, websocket
+
+ws = websocket.WebSocket()
+ws.connect("ws://localhost:18090/v1/stream"
+           "?subscription_id=<id>&token=<token>&resume_from=1")
+
+last_position = 0
+while True:
+    msg = json.loads(ws.recv())
+    if msg["type"] == "event":
+        position = msg["position"]
+        event = msg["event"]
+
+        # Process the CloudEvent
+        print(f"[pos={position}] {event['type']} {event.get('subject','')}")
+
+        # Persist position, then ACK
+        last_position = position
+        ws.send(json.dumps({"type": "ack", "position": position}))
+```
+
+### 8.10 Example: Minimal Node.js Client
+
+```javascript
+const WebSocket = require('ws');
+const ws = new WebSocket(
+  'ws://localhost:18090/v1/stream?subscription_id=<id>&token=<token>'
+);
+
+ws.on('message', (data) => {
+  const msg = JSON.parse(data);
+  if (msg.type === 'event') {
+    console.log(`[pos=${msg.position}] ${msg.event.type} ${msg.event.subject}`);
+
+    // Process event, then ACK
+    ws.send(JSON.stringify({ type: 'ack', position: msg.position }));
+  }
+});
+```
 
 ---
 
@@ -998,10 +1109,13 @@ webhooks/
 │   │   ├── entity_handler.go      #   REST endpoints for entity mappings
 │   │   └── migrations/            #   PostgreSQL schema (subscribers, subscriptions, entity_mappings)
 │   └── webhook-dispatcher/        # Webhook batch delivery with HMAC + fair scheduling
+├── tools/
+│   ├── producer-ui/        # Web UI: event builder + configurable batch generator
+│   └── consumer-ui/        # Web UI: webhook receiver + streaming consumer
+├── clients/
+│   └── java-consumer/      # Java/Spring Boot/Vaadin streaming consumer
 ├── synthetic/
-│   ├── event-generator/    # Synthetic ECST event producer
-│   ├── webhook-subscriber/ # Test webhook receiver with signature verification
-│   └── stream-subscriber/  # Test WebSocket streaming consumer
+│   └── webhook-subscriber/ # Simple webhook receiver for E2E testing
 ├── examples/
 │   └── stream-client/      # Example Go streaming client with resume
 ├── deploy/

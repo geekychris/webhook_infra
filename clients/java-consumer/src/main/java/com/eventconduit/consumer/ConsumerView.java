@@ -247,8 +247,7 @@ public class ConsumerView extends VerticalLayout {
             return;
         }
         if (token == null || token.isBlank()) {
-            Notification.show("Auth token is required", 3000, Notification.Position.MIDDLE);
-            return;
+            token = "anonymous"; // gateway allows connections when subscriber has no stream_auth
         }
 
         streamService.connect(gateway, subId, token, resume);

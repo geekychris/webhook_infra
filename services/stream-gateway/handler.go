@@ -14,20 +14,28 @@ import (
 type StreamHandler struct {
 	queueClient queuev1.QueueServiceClient
 	readyQ      *readyqueue.Queue
+	auth        *TokenAuth
 	instanceID  string
 	logger      *slog.Logger
 }
 
-func NewStreamHandler(queueClient queuev1.QueueServiceClient, readyQ *readyqueue.Queue, instanceID string, logger *slog.Logger) *StreamHandler {
+func NewStreamHandler(queueClient queuev1.QueueServiceClient, readyQ *readyqueue.Queue, auth *TokenAuth, instanceID string, logger *slog.Logger) *StreamHandler {
 	return &StreamHandler{
 		queueClient: queueClient,
 		readyQ:      readyQ,
+		auth:        auth,
 		instanceID:  instanceID,
 		logger:      logger,
 	}
 }
 
 // HandleUpgrade handles the WebSocket upgrade and starts a streaming session.
+//
+// Authentication: Token can be provided via:
+//   - Query parameter: ?token=<value>
+//   - Authorization header: Bearer <value>
+//
+// The token is validated against the subscriber's stream_auth field in the registry.
 func (h *StreamHandler) HandleUpgrade(w http.ResponseWriter, r *http.Request) {
 	subID := r.URL.Query().Get("subscription_id")
 	if subID == "" {
@@ -35,10 +43,27 @@ func (h *StreamHandler) HandleUpgrade(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token := r.URL.Query().Get("token")
+	token := ExtractToken(r)
 	if token == "" {
-		http.Error(w, `{"error":"token required"}`, http.StatusUnauthorized)
+		http.Error(w, `{"error":"token required — provide via ?token= or Authorization: Bearer header"}`, http.StatusUnauthorized)
 		return
+	}
+
+	// Validate token against registry
+	if h.auth != nil {
+		subscriberID, err := h.auth.Validate(r.Context(), subID, token)
+		if err != nil {
+			h.logger.Warn("stream auth failed",
+				"subscription_id", subID,
+				"error", err,
+			)
+			http.Error(w, `{"error":"authentication failed: `+err.Error()+`"}`, http.StatusForbidden)
+			return
+		}
+		h.logger.Info("stream authenticated",
+			"subscription_id", subID,
+			"subscriber_id", subscriberID,
+		)
 	}
 
 	var resumeAfter uint64
@@ -50,8 +75,6 @@ func (h *StreamHandler) HandleUpgrade(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-
-	_ = token // TODO: validate against registry
 
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		OriginPatterns: []string{"*"},

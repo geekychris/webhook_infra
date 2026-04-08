@@ -74,6 +74,15 @@ func (s *Store) CreateSubscriber(ctx context.Context, sub *model.Subscriber) (*m
 		sub.SigningKey = key
 	}
 
+	// Generate a stream auth token if one is not already set.
+	if sub.StreamAuth == "" {
+		token := make([]byte, 24)
+		if _, err := rand.Read(token); err != nil {
+			return nil, fmt.Errorf("generating stream token: %w", err)
+		}
+		sub.StreamAuth = fmt.Sprintf("stk_%x", token)
+	}
+
 	// If a custom ID is provided, use it. Otherwise let the DB generate one.
 	if sub.ID != "" {
 		row := s.pool.QueryRow(ctx,

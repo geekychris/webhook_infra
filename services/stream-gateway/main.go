@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net/http"
 	"os"
@@ -24,8 +25,13 @@ func main() {
 
 	queueAddr := config.Env("QUEUE_SERVICE_ADDR", "localhost:50052")
 	redisAddr := config.Env("REDIS_ADDR", "localhost:6379")
+	registryURL := config.Env("REGISTRY_URL", "http://localhost:8081")
 	httpPort := config.Env("HTTP_PORT", "8090")
 	instanceID := config.Env("INSTANCE_ID", uuid.New().String())
+
+	// TLS configuration (optional)
+	tlsCert := config.Env("TLS_CERT", "") // path to certificate file
+	tlsKey := config.Env("TLS_KEY", "")   // path to private key file
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -51,7 +57,10 @@ func main() {
 		}
 	}
 
-	handler := NewStreamHandler(queueClient, readyQ, instanceID, logger)
+	// Token authentication against the registry.
+	auth := NewTokenAuth(registryURL, logger)
+
+	handler := NewStreamHandler(queueClient, readyQ, auth, instanceID, logger)
 
 	mux := http.NewServeMux()
 	mux.Handle("/", health.Handler(nil))
@@ -62,15 +71,47 @@ func main() {
 		Handler: mux,
 	}
 
+	// Configure TLS if cert and key are provided.
+	useTLS := tlsCert != "" && tlsKey != ""
+	if useTLS {
+		cert, err := tls.LoadX509KeyPair(tlsCert, tlsKey)
+		if err != nil {
+			logger.Error("failed to load TLS certificate", "cert", tlsCert, "key", tlsKey, "error", err)
+			os.Exit(1)
+		}
+		server.TLSConfig = &tls.Config{
+			Certificates: []tls.Certificate{cert},
+			MinVersion:   tls.VersionTLS12,
+		}
+	}
+
 	go func() {
 		<-ctx.Done()
-		logger.Info("shutting down HTTP server")
+		logger.Info("shutting down")
 		server.Shutdown(context.Background())
 	}()
 
-	logger.Info("stream-gateway starting", "port", httpPort)
-	if err := server.ListenAndServe(); err != http.ErrServerClosed {
-		logger.Error("HTTP server failed", "error", err)
-		os.Exit(1)
+	proto := "ws"
+	if useTLS {
+		proto = "wss"
+		logger.Info("stream-gateway starting with TLS",
+			"port", httpPort,
+			"protocol", proto,
+			"cert", tlsCert,
+		)
+		if err := server.ListenAndServeTLS(tlsCert, tlsKey); err != http.ErrServerClosed {
+			logger.Error("server failed", "error", err)
+			os.Exit(1)
+		}
+	} else {
+		logger.Info("stream-gateway starting",
+			"port", httpPort,
+			"protocol", proto,
+			"tls", "disabled (set TLS_CERT and TLS_KEY to enable)",
+		)
+		if err := server.ListenAndServe(); err != http.ErrServerClosed {
+			logger.Error("server failed", "error", err)
+			os.Exit(1)
+		}
 	}
 }

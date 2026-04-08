@@ -24,6 +24,7 @@ func main() {
 
 	dbURL := config.Env("DATABASE_URL", "postgres://egw:egw@localhost:5432/eventgateway?sslmode=disable")
 	queueAddr := config.Env("QUEUE_SERVICE_ADDR", "localhost:50052")
+	registryURL := config.Env("REGISTRY_URL", "http://localhost:8081")
 	httpPort := config.Env("HTTP_PORT", "8085")
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -62,6 +63,11 @@ func main() {
 		r.Post("/subscriptions/{id}/replay", h.ReplaySubscription)
 		r.Get("/health", h.AggregateHealth)
 	})
+
+	// Proxy to registry API — same origin, avoids CORS issues.
+	// /v1/proxy/v1/subscribers → registry /v1/subscribers
+	// /v1/proxy/v1/entity-mappings/all → registry /v1/entity-mappings/all
+	r.HandleFunc("/v1/proxy/*", proxyHandler(registryURL))
 
 	server := &http.Server{
 		Addr:    fmt.Sprintf(":%s", httpPort),

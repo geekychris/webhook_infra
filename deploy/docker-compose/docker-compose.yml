@@ -159,6 +159,7 @@ services:
     environment:
       DATABASE_URL: "postgres://egw:egw@postgres:5432/eventgateway?sslmode=disable"
       QUEUE_SERVICE_ADDR: "subscriber-queue-service:50052"
+      REGISTRY_URL: "http://subscriber-registry:8081"
       HTTP_PORT: "8085"
     ports:
       - "18085:8085"
@@ -166,6 +167,8 @@ services:
       postgres:
         condition: service_healthy
       subscriber-queue-service:
+        condition: service_started
+      subscriber-registry:
         condition: service_started
 
   # Dev/test UI tools (use --profile tools to start)

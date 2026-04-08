@@ -239,7 +239,7 @@ public class ConsumerView extends VerticalLayout {
         String gateway = gatewayField.getValue();
         String subId = subscriptionField.getValue();
         String token = tokenField.getValue();
-        long resume = 0;
+        long resume = 0; // 0 = auto-resume from last persisted position
         try { resume = Long.parseLong(resumeField.getValue()); } catch (Exception ignored) {}
 
         if (subId == null || subId.isBlank()) {
@@ -313,8 +313,8 @@ public class ConsumerView extends VerticalLayout {
             }
         }
 
-        statsLabel.setText(String.format("Total: %d events | Last position: %d | %s",
-            streamService.getTotalReceived(), streamService.getLastPosition(), streamService.getStatusMessage()));
+        statsLabel.setText(String.format("Total: %d events | Last processed position: %d | %s",
+            streamService.getTotalReceived(), streamService.getLastProcessedPosition(), streamService.getStatusMessage()));
 
         connectBtn.setEnabled(state == ConnectionState.DISCONNECTED || state == ConnectionState.ERROR);
         disconnectBtn.setEnabled(state == ConnectionState.CONNECTED || state == ConnectionState.CONNECTING);

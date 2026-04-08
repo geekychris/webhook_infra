@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/example/event-gateway/internal/readyqueue"
 	queuev1 "github.com/example/event-gateway/internal/proto/queue/v1"
 	"nhooyr.io/websocket"
 )
@@ -12,21 +13,21 @@ import (
 // StreamHandler handles WebSocket upgrade requests for event streaming.
 type StreamHandler struct {
 	queueClient queuev1.QueueServiceClient
+	readyQ      *readyqueue.Queue
 	instanceID  string
 	logger      *slog.Logger
 }
 
-// NewStreamHandler creates a new stream handler.
-func NewStreamHandler(queueClient queuev1.QueueServiceClient, instanceID string, logger *slog.Logger) *StreamHandler {
+func NewStreamHandler(queueClient queuev1.QueueServiceClient, readyQ *readyqueue.Queue, instanceID string, logger *slog.Logger) *StreamHandler {
 	return &StreamHandler{
 		queueClient: queueClient,
+		readyQ:      readyQ,
 		instanceID:  instanceID,
 		logger:      logger,
 	}
 }
 
 // HandleUpgrade handles the WebSocket upgrade and starts a streaming session.
-// Query params: subscription_id, token, resume_after (optional position).
 func (h *StreamHandler) HandleUpgrade(w http.ResponseWriter, r *http.Request) {
 	subID := r.URL.Query().Get("subscription_id")
 	if subID == "" {
@@ -40,7 +41,6 @@ func (h *StreamHandler) HandleUpgrade(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse optional resume position
 	var resumeAfter uint64
 	if ra := r.URL.Query().Get("resume_after"); ra != "" {
 		var err error
@@ -51,8 +51,7 @@ func (h *StreamHandler) HandleUpgrade(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// TODO: validate token against subscriber registry
-	_ = token
+	_ = token // TODO: validate against registry
 
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		OriginPatterns: []string{"*"},
@@ -62,17 +61,11 @@ func (h *StreamHandler) HandleUpgrade(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session := NewSession(conn, subID, h.queueClient, h.instanceID, resumeAfter, h.logger)
+	session := NewSession(conn, subID, h.queueClient, h.readyQ, h.instanceID, resumeAfter, h.logger)
 
-	h.logger.Info("streaming session started",
-		"subscription_id", subID,
-		"resume_after", resumeAfter,
-	)
+	h.logger.Info("streaming session started", "subscription_id", subID, "resume_after", resumeAfter)
 
 	if err := session.Run(r.Context()); err != nil {
-		h.logger.Error("session ended with error",
-			"subscription_id", subID,
-			"error", err,
-		)
+		h.logger.Error("session ended with error", "subscription_id", subID, "error", err)
 	}
 }

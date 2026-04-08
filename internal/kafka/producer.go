@@ -2,6 +2,7 @@ package kafka
 
 import (
 	"context"
+	"time"
 
 	"github.com/segmentio/kafka-go"
 )
@@ -20,6 +21,8 @@ func NewProducer(brokers []string, topic string) *Producer {
 			Balancer:     &kafka.Hash{},
 			RequiredAcks: kafka.RequireAll,
 			Async:        false,
+			BatchTimeout: 10 * time.Millisecond, // flush quickly for low-latency
+			BatchSize:    100,                    // batch up to 100 messages per write
 		},
 	}
 }

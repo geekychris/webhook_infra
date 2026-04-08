@@ -1,8 +1,9 @@
-.PHONY: all build test proto clean docker-build compose-up compose-down
+.PHONY: all build test e2e proto clean docker-build compose-up compose-down
 
 SERVICES := subscriber-registry config-distributor ingestion-router queue-writer \
             subscriber-queue-service webhook-dispatcher stream-gateway admin-api
 SYNTHETIC := event-generator webhook-subscriber stream-subscriber
+TOOLS := producer-ui consumer-ui
 
 all: build
 
@@ -14,6 +15,10 @@ build:
 	@for syn in $(SYNTHETIC); do \
 		echo "Building $$syn..."; \
 		go build -o bin/$$syn ./synthetic/$$syn; \
+	done
+	@for tool in $(TOOLS); do \
+		echo "Building $$tool..."; \
+		go build -o bin/$$tool ./tools/$$tool; \
 	done
 
 test:
@@ -46,3 +51,10 @@ compose-down:
 
 compose-synthetic:
 	docker compose -f deploy/docker-compose/docker-compose.yml --profile synthetic up --build -d
+
+compose-tools:
+	docker compose -f deploy/docker-compose/docker-compose.yml --profile tools up --build -d
+
+e2e:
+	@echo "Running E2E tests (requires: make compose-up && make compose-synthetic)"
+	go test ./tests/e2e/... -v -count=1 -timeout 600s

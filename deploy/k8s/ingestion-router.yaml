@@ -28,6 +28,12 @@ spec:
               value: "kafka.event-gateway.svc.cluster.local:9092"
             - name: CONFIG_DISTRIBUTOR_ADDR
               value: "config-distributor.event-gateway.svc.cluster.local:50051"
+            - name: REDIS_ADDR
+              value: "valkey.event-gateway.svc.cluster.local:6379"
+            - name: REGISTRY_URL
+              value: "http://subscriber-registry.event-gateway.svc.cluster.local:8081"
+            - name: CACHE_SYNC_INTERVAL
+              value: "5m"
           resources:
             requests:
               cpu: 100m

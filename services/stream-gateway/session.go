@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/example/event-gateway/internal/readyqueue"
 	queuev1 "github.com/example/event-gateway/internal/proto/queue/v1"
 	"nhooyr.io/websocket"
 )
@@ -29,17 +30,18 @@ type Session struct {
 	conn        *websocket.Conn
 	subID       string
 	queueClient queuev1.QueueServiceClient
+	readyQ      *readyqueue.Queue
 	instanceID  string
 	resumeAfter uint64
 	leaseEpoch  uint64
 	logger      *slog.Logger
 }
 
-// NewSession creates a streaming session.
 func NewSession(
 	conn *websocket.Conn,
 	subID string,
 	queueClient queuev1.QueueServiceClient,
+	readyQ *readyqueue.Queue,
 	instanceID string,
 	resumeAfter uint64,
 	logger *slog.Logger,
@@ -48,6 +50,7 @@ func NewSession(
 		conn:        conn,
 		subID:       subID,
 		queueClient: queueClient,
+		readyQ:      readyQ,
 		instanceID:  instanceID,
 		resumeAfter: resumeAfter,
 		logger:      logger.With("subscription_id", subID),
@@ -70,7 +73,6 @@ func (s *Session) Run(ctx context.Context) error {
 	}
 	s.leaseEpoch = leaseResp.Epoch
 
-	// Start lease renewal in background
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	go s.renewLeaseLoop(ctx)
@@ -79,30 +81,24 @@ func (s *Session) Run(ctx context.Context) error {
 	ackCh := make(chan uint64, 64)
 	go s.readAcks(ctx, cancel, ackCh)
 
-	// Main streaming loop
+	// Subscribe to Redis notifications for this subscription — wakes us
+	// instantly when new events are appended. No polling needed.
+	var notifyCh <-chan struct{}
+	if s.readyQ != nil {
+		notifyCh = s.readyQ.Subscribe(ctx, s.subID)
+	}
+
 	cursor := s.resumeAfter
-	pollInterval := 100 * time.Millisecond
 
 	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case ackPos := <-ackCh:
-			if _, err := s.queueClient.Ack(ctx, &queuev1.AckRequest{
-				SubscriptionId: s.subID,
-				Position:       ackPos,
-				LeaseEpoch:     s.leaseEpoch,
-			}); err != nil {
-				s.logger.Error("ack failed", "position", ackPos, "error", err)
-			}
-		default:
-		}
+		// Process any pending ACKs first (non-blocking).
+		s.drainAcks(ctx, ackCh)
 
-		// Read batch from queue
+		// Read available events from the queue.
 		readResp, err := s.queueClient.Read(ctx, &queuev1.ReadRequest{
 			SubscriptionId: s.subID,
 			AfterPosition:  cursor,
-			MaxCount:        50,
+			MaxCount:       50,
 			LeaseEpoch:     s.leaseEpoch,
 		})
 		if err != nil {
@@ -110,27 +106,33 @@ func (s *Session) Run(ctx context.Context) error {
 		}
 
 		if len(readResp.Entries) == 0 {
-			// No new events, wait briefly
-			select {
-			case <-ctx.Done():
-				return nil
-			case <-time.After(pollInterval):
-				continue
-			case ackPos := <-ackCh:
-				if _, err := s.queueClient.Ack(ctx, &queuev1.AckRequest{
-					SubscriptionId: s.subID,
-					Position:       ackPos,
-					LeaseEpoch:     s.leaseEpoch,
-				}); err != nil {
-					s.logger.Error("ack failed", "position", ackPos, "error", err)
+			// No events available — block until notified or timeout.
+			if notifyCh != nil {
+				select {
+				case <-ctx.Done():
+					return nil
+				case <-notifyCh:
+					continue // new events available, read immediately
+				case ackPos := <-ackCh:
+					s.ack(ctx, ackPos)
+					continue
 				}
-				continue
+			} else {
+				// Fallback: brief poll if Redis not available.
+				select {
+				case <-ctx.Done():
+					return nil
+				case <-time.After(100 * time.Millisecond):
+					continue
+				case ackPos := <-ackCh:
+					s.ack(ctx, ackPos)
+					continue
+				}
 			}
 		}
 
-		// Stream events to client
+		// Stream events to client immediately — no linger for streaming.
 		for _, entry := range readResp.Entries {
-			// Serialize the CloudEventProto to JSON for the WebSocket frame
 			eventJSON, err := json.Marshal(entry.GetEvent())
 			if err != nil {
 				return fmt.Errorf("marshal event proto: %w", err)
@@ -156,6 +158,27 @@ func (s *Session) Run(ctx context.Context) error {
 	}
 }
 
+func (s *Session) drainAcks(ctx context.Context, ackCh <-chan uint64) {
+	for {
+		select {
+		case pos := <-ackCh:
+			s.ack(ctx, pos)
+		default:
+			return
+		}
+	}
+}
+
+func (s *Session) ack(ctx context.Context, pos uint64) {
+	if _, err := s.queueClient.Ack(ctx, &queuev1.AckRequest{
+		SubscriptionId: s.subID,
+		Position:       pos,
+		LeaseEpoch:     s.leaseEpoch,
+	}); err != nil {
+		s.logger.Error("ack failed", "position", pos, "error", err)
+	}
+}
+
 func (s *Session) renewLeaseLoop(ctx context.Context) {
 	ticker := time.NewTicker(20 * time.Second)
 	defer ticker.Stop()
@@ -163,7 +186,6 @@ func (s *Session) renewLeaseLoop(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			// Release lease on exit
 			s.queueClient.ReleaseLease(context.Background(), &queuev1.ReleaseLeaseRequest{
 				SubscriptionId: s.subID,
 				HolderId:       s.instanceID,

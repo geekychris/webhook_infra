@@ -15,14 +15,16 @@ type MatchResult struct {
 
 // Matcher holds subscriptions in memory and matches incoming ECSTEvents.
 type Matcher struct {
-	mu    sync.RWMutex
-	byType map[string][]*model.Subscription
+	mu           sync.RWMutex
+	byType       map[string][]*model.Subscription
+	bySubscriber map[model.SubscriberID][]*model.Subscription
 }
 
 // New creates a new empty Matcher.
 func New() *Matcher {
 	return &Matcher{
-		byType: make(map[string][]*model.Subscription),
+		byType:       make(map[string][]*model.Subscription),
+		bySubscriber: make(map[model.SubscriberID][]*model.Subscription),
 	}
 }
 
@@ -36,8 +38,18 @@ func (m *Matcher) LoadSnapshot(subs []model.Subscription) {
 		}
 	}
 
+	subIdx := make(map[model.SubscriberID][]*model.Subscription)
+	for i := range subs {
+		s := &subs[i]
+		if !s.Active {
+			continue
+		}
+		subIdx[s.SubscriberID] = append(subIdx[s.SubscriberID], s)
+	}
+
 	m.mu.Lock()
 	m.byType = index
+	m.bySubscriber = subIdx
 	m.mu.Unlock()
 }
 
@@ -64,6 +76,13 @@ func (m *Matcher) Match(event model.ECSTEvent) []*MatchResult {
 		})
 	}
 	return results
+}
+
+// SubscriptionsForSubscriber returns all active subscriptions for a given subscriber ID.
+func (m *Matcher) SubscriptionsForSubscriber(subscriberID model.SubscriberID) []*model.Subscription {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.bySubscriber[subscriberID]
 }
 
 // matchSource checks whether the event source matches the subscription's glob filter.

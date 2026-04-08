@@ -32,6 +32,25 @@ func NewConsumer(brokers []string, topic, groupID string, logger *slog.Logger) *
 	}
 }
 
+// NewConsumerFromEarliest creates a Kafka consumer that starts from the earliest
+// available offset when the consumer group has no committed offsets. This is
+// important for topics like entity-mappings where we need the full history on
+// first startup to build the complete cache state.
+func NewConsumerFromEarliest(brokers []string, topic, groupID string, logger *slog.Logger) *Consumer {
+	return &Consumer{
+		reader: kafka.NewReader(kafka.ReaderConfig{
+			Brokers:     brokers,
+			Topic:       topic,
+			GroupID:     groupID,
+			MinBytes:    1e3,
+			MaxBytes:    10e6,
+			MaxWait:     500 * time.Millisecond,
+			StartOffset: kafka.FirstOffset,
+		}),
+		logger: logger,
+	}
+}
+
 // Consume reads messages in a loop, calling handler for each. It commits offsets
 // after successful processing. Blocks until ctx is cancelled.
 func (c *Consumer) Consume(ctx context.Context, handler MessageHandler) error {

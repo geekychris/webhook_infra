@@ -4,3 +4,27 @@ bin/
 *.out
 .env
 *.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Go build cache
+vendor/
+
+# Docker volumes / data
+data/
+/queuedata/
+
+# Temporary build artifacts
+admin-api
+subscriber-registry
+webhook-dispatcher
+queue-writer

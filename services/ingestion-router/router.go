@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/example/event-gateway/internal/entity"
 	"github.com/example/event-gateway/internal/kafka"
 	"github.com/example/event-gateway/internal/mapper"
 	"github.com/example/event-gateway/internal/matcher"
@@ -21,7 +22,8 @@ import (
 type Router struct {
 	consumer       *kafka.Consumer
 	producer       *kafka.Producer
-	matcher        *matcher.Matcher
+	baseMatcher    *matcher.Matcher
+	entityMatcher  *matcher.EntityMatcher
 	mapper         *mapper.Mapper
 	configAddr     string
 	logger         *slog.Logger
@@ -31,20 +33,24 @@ type Router struct {
 }
 
 // NewRouter creates a new Router with all required dependencies.
+// resolver may be nil if entity-based routing is not configured.
 func NewRouter(
 	consumer *kafka.Consumer,
 	producer *kafka.Producer,
 	configAddr string,
+	resolver *entity.Resolver,
 	logger *slog.Logger,
 ) *Router {
+	m := matcher.New()
 	return &Router{
-		consumer:   consumer,
-		producer:   producer,
-		matcher:    matcher.New(),
-		mapper:     mapper.New(),
-		configAddr: configAddr,
-		logger:     logger,
-		subs:       make(map[string]model.Subscription),
+		consumer:      consumer,
+		producer:      producer,
+		baseMatcher:   m,
+		entityMatcher: matcher.NewEntityMatcher(m, resolver, logger),
+		mapper:        mapper.New(),
+		configAddr:    configAddr,
+		logger:        logger,
+		subs:          make(map[string]model.Subscription),
 	}
 }
 
@@ -128,7 +134,7 @@ func (r *Router) applyUpdate(update *configv1.ConfigUpdate) {
 	for _, sub := range r.subs {
 		all = append(all, sub)
 	}
-	r.matcher.LoadSnapshot(all)
+	r.baseMatcher.LoadSnapshot(all)
 }
 
 // processMessage handles a single Kafka message from the ecst-events topic.
@@ -139,7 +145,7 @@ func (r *Router) processMessage(ctx context.Context, key, value []byte) error {
 		return nil // skip malformed messages
 	}
 
-	matches := r.matcher.Match(event)
+	matches := r.entityMatcher.MatchWithEntities(ctx, event)
 	if len(matches) == 0 {
 		return nil
 	}

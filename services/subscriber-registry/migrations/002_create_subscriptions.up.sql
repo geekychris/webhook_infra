@@ -23,6 +23,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS subscription_change_trigger ON subscriptions;
 CREATE TRIGGER subscription_change_trigger
     AFTER INSERT OR UPDATE OR DELETE ON subscriptions
     FOR EACH ROW EXECUTE FUNCTION notify_subscription_change();

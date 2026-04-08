@@ -6,10 +6,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/example/event-gateway/internal/config"
+	"github.com/example/event-gateway/internal/kafka"
 	"github.com/example/event-gateway/internal/observability"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -23,6 +25,7 @@ func main() {
 		os.Exit(1)
 	}
 	httpPort := config.Env("HTTP_PORT", "8080")
+	kafkaBrokers := config.Env("KAFKA_BROKERS", "localhost:9092")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -55,10 +58,18 @@ func main() {
 	}
 	logger.Info("migrations complete")
 
+	// Create Kafka producer for entity-mappings topic.
+	brokers := strings.Split(kafkaBrokers, ",")
+	entityProducer := kafka.NewProducer(brokers, kafka.TopicEntityMappings)
+	defer entityProducer.Close()
+
+	// Create entity store.
+	entityStore := NewEntityStore(pool, entityProducer)
+
 	// Create and start HTTP server.
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%s", httpPort),
-		Handler:      NewServer(store, logger),
+		Handler:      NewServer(store, entityStore, logger),
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  60 * time.Second,

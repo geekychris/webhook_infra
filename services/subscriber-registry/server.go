@@ -11,7 +11,7 @@ import (
 )
 
 // NewServer creates and configures the HTTP server mux with all routes.
-func NewServer(store *Store, logger *slog.Logger) *chi.Mux {
+func NewServer(store *Store, entityStore *EntityStore, logger *slog.Logger) *chi.Mux {
 	r := chi.NewRouter()
 
 	// Middleware
@@ -28,6 +28,7 @@ func NewServer(store *Store, logger *slog.Logger) *chi.Mux {
 
 	// API routes
 	h := NewHandler(store, logger)
+	eh := NewEntityHandler(entityStore, logger)
 
 	r.Route("/v1", func(r chi.Router) {
 		// Subscribers
@@ -45,6 +46,13 @@ func NewServer(store *Store, logger *slog.Logger) *chi.Mux {
 		r.Get("/subscriptions/{id}", h.GetSubscription)
 		r.Put("/subscriptions/{id}", h.UpdateSubscription)
 		r.Delete("/subscriptions/{id}", h.DeleteSubscription)
+
+		// Entity mappings
+		r.Post("/entity-mappings", eh.CreateMapping)
+		r.Delete("/entity-mappings", eh.DeleteMapping)
+		r.Get("/entity-mappings", eh.ListMappings)
+		r.Get("/entity-mappings/all", eh.ListAll)
+		r.Get("/subscribers/{id}/entity-mappings", eh.ListBySubscriber)
 	})
 
 	return r

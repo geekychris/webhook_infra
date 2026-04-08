@@ -8,12 +8,15 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/example/event-gateway/internal/config"
 	"github.com/example/event-gateway/internal/health"
 	"github.com/example/event-gateway/internal/observability"
+	"github.com/example/event-gateway/internal/readyqueue"
 	queuev1 "github.com/example/event-gateway/internal/proto/queue/v1"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -23,8 +26,10 @@ func main() {
 
 	queueAddr := config.Env("QUEUE_SERVICE_ADDR", "localhost:50052")
 	registryURL := config.Env("REGISTRY_URL", "http://localhost:8081")
+	redisAddr := config.Env("REDIS_ADDR", "localhost:6379")
 	healthPort := config.Env("HEALTH_PORT", "8082")
 	instanceID := config.Env("INSTANCE_ID", uuid.New().String())
+	lingerMS := config.EnvInt("LINGER_MS", 5)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -38,11 +43,20 @@ func main() {
 
 	queueClient := queuev1.NewQueueServiceClient(conn)
 
+	// Connect to Redis for the ready queue.
+	rdb := redis.NewClient(&redis.Options{Addr: redisAddr})
+	if err := rdb.Ping(ctx).Err(); err != nil {
+		logger.Error("redis is required for the ready queue", "addr", redisAddr, "error", err)
+		os.Exit(1)
+	}
+	readyQ := readyqueue.New(rdb)
+	logger.Info("redis ready-queue connected", "addr", redisAddr)
+
 	registry := NewRegistryClient(registryURL)
 	sender := NewSender(logger)
-	scheduler := NewScheduler(logger)
 
-	dispatcher := NewDispatcher(queueClient, registry, sender, scheduler, instanceID, logger)
+	dispatcher := NewDispatcher(queueClient, registry, sender, readyQ, instanceID, logger)
+	dispatcher.lingerDuration = time.Duration(lingerMS) * time.Millisecond
 
 	// Health endpoint
 	go func() {
@@ -78,6 +92,7 @@ type subscriberInfo struct {
 type subscriptionInfo struct {
 	ID           string `json:"id"`
 	SubscriberID string `json:"subscriber_id"`
+	DeliveryMode string `json:"delivery_mode"`
 	MaxBatchSize int    `json:"max_batch_size"`
 	Active       bool   `json:"active"`
 }
@@ -96,5 +111,22 @@ func (rc *RegistryClient) GetSubscriber(ctx context.Context, id string) (*subscr
 		return nil, fmt.Errorf("registry returned %d", resp.StatusCode)
 	}
 	var info subscriberInfo
+	return &info, json.NewDecoder(resp.Body).Decode(&info)
+}
+
+func (rc *RegistryClient) GetSubscription(ctx context.Context, id string) (*subscriptionInfo, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/v1/subscriptions/%s", rc.baseURL, id), nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := rc.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("registry returned %d", resp.StatusCode)
+	}
+	var info subscriptionInfo
 	return &info, json.NewDecoder(resp.Body).Decode(&info)
 }

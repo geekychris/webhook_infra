@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Event Gateway Admin</title>
+<style>
+  :root {
+    --bg-primary: #0f1923;
+    --bg-secondary: #1a2736;
+    --bg-card: #1e2f40;
+    --bg-input: #162230;
+    --border: #2a3f55;
+    --text-primary: #e8edf2;
+    --text-secondary: #8899aa;
+    --accent: #3b82f6;
+    --accent-hover: #2563eb;
+    --green: #22c55e;
+    --red: #ef4444;
+    --orange: #f59e0b;
+    --sidebar-width: 240px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+    display: flex;
+  }
+
+  /* Sidebar */
+  .sidebar {
+    width: var(--sidebar-width);
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 10;
+  }
+
+  .sidebar-header {
+    padding: 20px;
+    border-bottom: 1px solid var(--border);
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 0.5px;
+  }
+
+  .sidebar-header span { color: var(--text-secondary); font-weight: 400; }
+
+  .sidebar nav { padding: 12px 0; flex: 1; }
+
+  .nav-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 20px;
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.15s;
+    border-left: 3px solid transparent;
+  }
+
+  .nav-link:hover { color: var(--text-primary); background: rgba(59,130,246,0.05); }
+  .nav-link.active {
+    color: var(--accent);
+    background: rgba(59,130,246,0.1);
+    border-left-color: var(--accent);
+  }
+
+  .nav-icon { font-size: 18px; width: 24px; text-align: center; }
+
+  /* Main content */
+  .main {
+    margin-left: var(--sidebar-width);
+    flex: 1;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .header {
+    padding: 20px 32px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-secondary);
+  }
+
+  .header h1 { font-size: 20px; font-weight: 600; }
+
+  .content { padding: 24px 32px; flex: 1; }
+
+  /* Page containers */
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* Cards */
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+  }
+
+  .card-label { font-size: 12px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+  .card-value { font-size: 28px; font-weight: 700; }
+  .card-value.healthy { color: var(--green); }
+  .card-value.unhealthy { color: var(--red); }
+
+  /* Tables */
+  .table-wrap {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    text-align: left;
+    padding: 12px 16px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+  }
+  td {
+    padding: 10px 16px;
+    font-size: 13px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(59,130,246,0.03); }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .badge-green { background: rgba(34,197,94,0.15); color: var(--green); }
+  .badge-red { background: rgba(239,68,68,0.15); color: var(--red); }
+  .badge-blue { background: rgba(59,130,246,0.15); color: var(--accent); }
+
+  /* Buttons */
+  .btn {
+    padding: 7px 14px;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-sm { padding: 4px 10px; font-size: 12px; }
+  .btn-green { background: rgba(34,197,94,0.15); color: var(--green); }
+  .btn-green:hover { background: rgba(34,197,94,0.25); }
+  .btn-orange { background: rgba(245,158,11,0.15); color: var(--orange); }
+  .btn-orange:hover { background: rgba(245,158,11,0.25); }
+  .btn-red { background: rgba(239,68,68,0.15); color: var(--red); }
+  .btn-red:hover { background: rgba(239,68,68,0.25); }
+
+  .toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+  .toolbar h2 { font-size: 16px; font-weight: 600; }
+
+  /* Modal */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+
+  .modal {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    min-width: 400px;
+    max-width: 500px;
+  }
+  .modal h3 { margin-bottom: 16px; font-size: 16px; }
+
+  .form-group { margin-bottom: 14px; }
+  .form-group label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .form-group input,
+  .form-group select {
+    width: 100%;
+    padding: 8px 12px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 14px;
+    outline: none;
+  }
+  .form-group input:focus,
+  .form-group select:focus { border-color: var(--accent); }
+
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+  .btn-cancel { background: var(--bg-secondary); color: var(--text-secondary); }
+  .btn-cancel:hover { background: var(--border); color: var(--text-primary); }
+
+  /* Loading / error */
+  .loading { color: var(--text-secondary); padding: 24px; text-align: center; font-size: 14px; }
+  .error-msg { color: var(--red); background: rgba(239,68,68,0.1); padding: 12px 16px; border-radius: 6px; font-size: 13px; margin-bottom: 16px; }
+
+  /* Stats cards */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
+  }
+  .stat-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .stat-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .stat-card-header h4 { font-size: 13px; font-weight: 600; }
+  .stat-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
+  .stat-label { color: var(--text-secondary); }
+  .stat-value { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .replay-row { display: flex; gap: 6px; margin-top: 10px; }
+  .replay-row input {
+    flex: 1;
+    padding: 5px 10px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-size: 13px;
+    outline: none;
+  }
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="sidebar-header">Event Gateway <span>Admin</span></div>
+  <nav>
+    <a class="nav-link active" data-page="dashboard"><span class="nav-icon">&#9632;</span> Dashboard</a>
+    <a class="nav-link" data-page="subscribers"><span class="nav-icon">&#9706;</span> Subscribers</a>
+    <a class="nav-link" data-page="subscriptions"><span class="nav-icon">&#9881;</span> Subscriptions</a>
+    <a class="nav-link" data-page="queue-stats"><span class="nav-icon">&#9776;</span> Queue Stats</a>
+  </nav>
+</aside>
+
+<div class="main">
+  <div class="header"><h1 id="page-title">Dashboard</h1></div>
+  <div class="content">
+
+    <!-- Dashboard -->
+    <div id="page-dashboard" class="page active">
+      <div id="dash-error"></div>
+      <div class="card-grid">
+        <div class="card">
+          <div class="card-label">Total Subscribers</div>
+          <div class="card-value" id="dash-subscribers">--</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Active Subscriptions</div>
+          <div class="card-value" id="dash-subscriptions">--</div>
+        </div>
+        <div class="card">
+          <div class="card-label">System Health</div>
+          <div class="card-value" id="dash-health">--</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Subscribers -->
+    <div id="page-subscribers" class="page">
+      <div id="sub-error"></div>
+      <div class="toolbar">
+        <h2>Subscribers</h2>
+        <button class="btn btn-primary" onclick="openModal('subscriber-modal')">Create Subscriber</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>ID</th><th>Name</th><th>Webhook URL</th><th>Created</th></tr></thead>
+          <tbody id="subscribers-tbody"><tr><td colspan="4" class="loading">Loading...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Subscriptions -->
+    <div id="page-subscriptions" class="page">
+      <div id="subs-error"></div>
+      <div class="toolbar">
+        <h2>Subscriptions</h2>
+        <button class="btn btn-primary" onclick="openModal('subscription-modal')">Create Subscription</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>ID</th><th>Subscriber</th><th>Event Types</th><th>Mode</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="subscriptions-tbody"><tr><td colspan="6" class="loading">Loading...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Queue Stats -->
+    <div id="page-queue-stats" class="page">
+      <div id="qs-error"></div>
+      <div class="toolbar"><h2>Queue Statistics</h2></div>
+      <div id="queue-stats-grid" class="stats-grid">
+        <div class="loading">Loading...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Create Subscriber Modal -->
+<div id="subscriber-modal" class="modal-overlay" onclick="if(event.target===this)closeModal(this.id)">
+  <div class="modal">
+    <h3>Create Subscriber</h3>
+    <div id="sub-modal-error"></div>
+    <div class="form-group">
+      <label>Name</label>
+      <input type="text" id="sub-name" placeholder="My Service">
+    </div>
+    <div class="form-group">
+      <label>Webhook URL</label>
+      <input type="url" id="sub-webhook-url" placeholder="https://example.com/webhook">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-cancel" onclick="closeModal('subscriber-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="createSubscriber()">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- Create Subscription Modal -->
+<div id="subscription-modal" class="modal-overlay" onclick="if(event.target===this)closeModal(this.id)">
+  <div class="modal">
+    <h3>Create Subscription</h3>
+    <div id="subs-modal-error"></div>
+    <div class="form-group">
+      <label>Subscriber ID</label>
+      <input type="text" id="subs-subscriber-id" placeholder="subscriber UUID">
+    </div>
+    <div class="form-group">
+      <label>Event Types (comma-separated)</label>
+      <input type="text" id="subs-event-types" placeholder="order.created, order.updated">
+    </div>
+    <div class="form-group">
+      <label>Delivery Mode</label>
+      <select id="subs-delivery-mode">
+        <option value="webhook">Webhook</option>
+        <option value="stream">Stream</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-cancel" onclick="closeModal('subscription-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="createSubscription()">Create</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const ADMIN_API = '';
+const REGISTRY_API = 'http://localhost:18081';
+
+let dashInterval = null;
+let statsInterval = null;
+
+// ---- Navigation ----
+
+document.querySelectorAll('.nav-link').forEach(link => {
+  link.addEventListener('click', () => {
+    const page = link.dataset.page;
+    document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+    link.classList.add('active');
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById('page-' + page).classList.add('active');
+    document.getElementById('page-title').textContent =
+      link.textContent.trim();
+    stopTimers();
+    if (page === 'dashboard') loadDashboard();
+    if (page === 'subscribers') loadSubscribers();
+    if (page === 'subscriptions') loadSubscriptions();
+    if (page === 'queue-stats') loadQueueStats();
+  });
+});
+
+// ---- Helpers ----
+
+async function api(url, opts) {
+  const res = await fetch(url, opts);
+  if (!res.ok) {
+    const body = await res.text();
+    let msg;
+    try { msg = JSON.parse(body).error; } catch { msg = body; }
+    throw new Error(msg || 'Request failed: ' + res.status);
+  }
+  return res.json();
+}
+
+function showError(id, msg) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.innerHTML = msg ? '<div class="error-msg">' + escHtml(msg) + '</div>' : '';
+}
+
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function stopTimers() {
+  if (dashInterval) { clearInterval(dashInterval); dashInterval = null; }
+  if (statsInterval) { clearInterval(statsInterval); statsInterval = null; }
+}
+
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+// ---- Dashboard ----
+
+async function loadDashboard() {
+  showError('dash-error', '');
+  try {
+    const [subscribers, subscriptions, health] = await Promise.allSettled([
+      api(REGISTRY_API + '/v1/subscribers'),
+      api(ADMIN_API + '/v1/admin/subscriptions'),
+      api(ADMIN_API + '/v1/admin/health'),
+    ]);
+
+    if (subscribers.status === 'fulfilled') {
+      const list = Array.isArray(subscribers.value) ? subscribers.value : [];
+      document.getElementById('dash-subscribers').textContent = list.length;
+    } else {
+      document.getElementById('dash-subscribers').textContent = '--';
+    }
+
+    if (subscriptions.status === 'fulfilled') {
+      const list = Array.isArray(subscriptions.value) ? subscriptions.value : [];
+      const active = list.filter(s => s.active).length;
+      document.getElementById('dash-subscriptions').textContent = active + ' / ' + list.length;
+    } else {
+      document.getElementById('dash-subscriptions').textContent = '--';
+    }
+
+    if (health.status === 'fulfilled') {
+      const h = health.value;
+      const ok = h.database && h.queue_service;
+      const el = document.getElementById('dash-health');
+      el.textContent = ok ? 'Healthy' : 'Degraded';
+      el.className = 'card-value ' + (ok ? 'healthy' : 'unhealthy');
+    } else {
+      const el = document.getElementById('dash-health');
+      el.textContent = 'Unknown';
+      el.className = 'card-value unhealthy';
+    }
+  } catch (e) {
+    showError('dash-error', e.message);
+  }
+
+  dashInterval = setInterval(loadDashboard, 5000);
+}
+
+// ---- Subscribers ----
+
+async function loadSubscribers() {
+  showError('sub-error', '');
+  const tbody = document.getElementById('subscribers-tbody');
+  try {
+    const data = await api(REGISTRY_API + '/v1/subscribers');
+    const list = Array.isArray(data) ? data : [];
+    if (list.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" class="loading">No subscribers found</td></tr>';
+      return;
+    }
+    tbody.innerHTML = list.map(s => `<tr>
+      <td><code>${escHtml(s.id || '')}</code></td>
+      <td>${escHtml(s.name || '')}</td>
+      <td><code>${escHtml(s.webhook_url || '')}</code></td>
+      <td>${escHtml(s.created_at || '')}</td>
+    </tr>`).join('');
+  } catch (e) {
+    showError('sub-error', e.message);
+    tbody.innerHTML = '<tr><td colspan="4" class="loading">Failed to load</td></tr>';
+  }
+}
+
+async function createSubscriber() {
+  showError('sub-modal-error', '');
+  const name = document.getElementById('sub-name').value.trim();
+  const url = document.getElementById('sub-webhook-url').value.trim();
+  if (!name || !url) {
+    showError('sub-modal-error', 'Name and Webhook URL are required');
+    return;
+  }
+  try {
+    await api(REGISTRY_API + '/v1/subscribers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, webhook_url: url }),
+    });
+    closeModal('subscriber-modal');
+    document.getElementById('sub-name').value = '';
+    document.getElementById('sub-webhook-url').value = '';
+    loadSubscribers();
+  } catch (e) {
+    showError('sub-modal-error', e.message);
+  }
+}
+
+// ---- Subscriptions ----
+
+async function loadSubscriptions() {
+  showError('subs-error', '');
+  const tbody = document.getElementById('subscriptions-tbody');
+  try {
+    const data = await api(ADMIN_API + '/v1/admin/subscriptions');
+    const list = Array.isArray(data) ? data : [];
+    if (list.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="loading">No subscriptions found</td></tr>';
+      return;
+    }
+    tbody.innerHTML = list.map(s => {
+      const types = Array.isArray(s.event_types) ? s.event_types.join(', ') : '';
+      const active = s.active;
+      return `<tr>
+        <td><code>${escHtml(s.id)}</code></td>
+        <td><code>${escHtml(s.subscriber_id)}</code></td>
+        <td>${escHtml(types)}</td>
+        <td><span class="badge badge-blue">${escHtml(s.delivery_mode)}</span></td>
+        <td><span class="badge ${active ? 'badge-green' : 'badge-red'}">${active ? 'Active' : 'Paused'}</span></td>
+        <td>
+          ${active
+            ? `<button class="btn btn-sm btn-orange" onclick="toggleSubscription('${s.id}','pause')">Pause</button>`
+            : `<button class="btn btn-sm btn-green" onclick="toggleSubscription('${s.id}','resume')">Resume</button>`
+          }
+        </td>
+      </tr>`;
+    }).join('');
+  } catch (e) {
+    showError('subs-error', e.message);
+    tbody.innerHTML = '<tr><td colspan="6" class="loading">Failed to load</td></tr>';
+  }
+}
+
+async function toggleSubscription(id, action) {
+  try {
+    await api(ADMIN_API + '/v1/admin/subscriptions/' + id + '/' + action, { method: 'POST' });
+    loadSubscriptions();
+  } catch (e) {
+    showError('subs-error', e.message);
+  }
+}
+
+async function createSubscription() {
+  showError('subs-modal-error', '');
+  const subscriberId = document.getElementById('subs-subscriber-id').value.trim();
+  const eventTypesRaw = document.getElementById('subs-event-types').value.trim();
+  const deliveryMode = document.getElementById('subs-delivery-mode').value;
+  if (!subscriberId || !eventTypesRaw) {
+    showError('subs-modal-error', 'Subscriber ID and Event Types are required');
+    return;
+  }
+  const eventTypes = eventTypesRaw.split(',').map(t => t.trim()).filter(Boolean);
+  try {
+    await api(REGISTRY_API + '/v1/subscribers/' + subscriberId + '/subscriptions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event_types: eventTypes, delivery_mode: deliveryMode }),
+    });
+    closeModal('subscription-modal');
+    document.getElementById('subs-subscriber-id').value = '';
+    document.getElementById('subs-event-types').value = '';
+    loadSubscriptions();
+  } catch (e) {
+    showError('subs-modal-error', e.message);
+  }
+}
+
+// ---- Queue Stats ----
+
+async function loadQueueStats() {
+  showError('qs-error', '');
+  const grid = document.getElementById('queue-stats-grid');
+  try {
+    const subs = await api(ADMIN_API + '/v1/admin/subscriptions');
+    const list = Array.isArray(subs) ? subs : [];
+    if (list.length === 0) {
+      grid.innerHTML = '<div class="loading">No subscriptions found</div>';
+      return;
+    }
+    const results = await Promise.allSettled(
+      list.map(s => api(ADMIN_API + '/v1/admin/subscriptions/' + s.id + '/stats'))
+    );
+    let html = '';
+    list.forEach((s, i) => {
+      const r = results[i];
+      if (r.status === 'fulfilled') {
+        const st = r.value;
+        html += `<div class="stat-card">
+          <div class="stat-card-header">
+            <h4>${escHtml(s.id)}</h4>
+            <span class="badge ${s.active ? 'badge-green' : 'badge-red'}">${s.active ? 'Active' : 'Paused'}</span>
+          </div>
+          <div class="stat-row"><span class="stat-label">Tail Seq</span><span class="stat-value">${st.tail_seq}</span></div>
+          <div class="stat-row"><span class="stat-label">Acked Seq</span><span class="stat-value">${st.acked_seq}</span></div>
+          <div class="stat-row"><span class="stat-label">Pending</span><span class="stat-value">${st.pending_count}</span></div>
+          <div class="stat-row"><span class="stat-label">Lease Epoch</span><span class="stat-value">${st.lease_epoch}</span></div>
+          <div class="replay-row">
+            <input type="number" id="replay-${s.id}" placeholder="Position" min="0">
+            <button class="btn btn-sm btn-primary" onclick="replaySubscription('${s.id}')">Replay</button>
+          </div>
+        </div>`;
+      } else {
+        html += `<div class="stat-card">
+          <div class="stat-card-header">
+            <h4>${escHtml(s.id)}</h4>
+            <span class="badge badge-red">Error</span>
+          </div>
+          <div class="loading">Failed to fetch stats</div>
+        </div>`;
+      }
+    });
+    grid.innerHTML = html;
+  } catch (e) {
+    showError('qs-error', e.message);
+    grid.innerHTML = '<div class="loading">Failed to load</div>';
+  }
+
+  statsInterval = setInterval(loadQueueStats, 3000);
+}
+
+async function replaySubscription(id) {
+  const input = document.getElementById('replay-' + id);
+  const pos = input ? input.value.trim() : '';
+  if (!pos) { showError('qs-error', 'Enter a position for replay'); return; }
+  try {
+    await api(ADMIN_API + '/v1/admin/subscriptions/' + id + '/replay?from_position=' + encodeURIComponent(pos), {
+      method: 'POST',
+    });
+    showError('qs-error', '');
+    loadQueueStats();
+  } catch (e) {
+    showError('qs-error', e.message);
+  }
+}
+
+// ---- Init ----
+loadDashboard();
+</script>
+</body>
+</html>

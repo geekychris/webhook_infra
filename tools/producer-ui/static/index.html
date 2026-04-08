@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Event Gateway — Test Producer</title>
+<style>
+  :root {
+    --bg-primary: #0f1923;
+    --bg-secondary: #1a2736;
+    --bg-card: #1e2f40;
+    --bg-input: #162230;
+    --border: #2a3f55;
+    --text-primary: #e8edf2;
+    --text-secondary: #8899aa;
+    --accent: #3b82f6;
+    --accent-hover: #2563eb;
+    --green: #22c55e;
+    --red: #ef4444;
+    --orange: #f59e0b;
+    --purple: #a855f7;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Header */
+  .header {
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .header h1 {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--accent);
+  }
+
+  .header h1 span {
+    color: var(--text-secondary);
+    font-weight: 400;
+  }
+
+  .badge {
+    background: var(--accent);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 12px;
+    min-width: 28px;
+    text-align: center;
+  }
+
+  /* Main layout */
+  .main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .panel {
+    padding: 20px;
+    overflow-y: auto;
+  }
+
+  .panel-left {
+    flex: 1;
+    min-width: 440px;
+    border-right: 1px solid var(--border);
+  }
+
+  .panel-right {
+    flex: 1;
+    min-width: 360px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+
+  .panel-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  /* Form styles */
+  .form-group {
+    margin-bottom: 14px;
+  }
+
+  .form-group label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 5px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+
+  .form-row {
+    display: flex;
+    gap: 12px;
+  }
+
+  .form-row .form-group {
+    flex: 1;
+  }
+
+  input, select, textarea {
+    width: 100%;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  input:focus, select:focus, textarea:focus {
+    border-color: var(--accent);
+  }
+
+  select {
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%238899aa'%3E%3Cpath d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding-right: 28px;
+  }
+
+  textarea.code {
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    resize: vertical;
+    min-height: 140px;
+    tab-size: 2;
+  }
+
+  /* Metadata rows */
+  .metadata-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .metadata-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .metadata-row input {
+    flex: 1;
+  }
+
+  .btn-icon {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    width: 30px;
+    height: 30px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+
+  .btn-icon:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .btn-icon.remove:hover {
+    border-color: var(--red);
+    color: var(--red);
+  }
+
+  .btn-add-row {
+    background: none;
+    border: 1px dashed var(--border);
+    color: var(--text-secondary);
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.15s;
+    margin-top: 4px;
+  }
+
+  .btn-add-row:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  /* Buttons */
+  .btn {
+    border: none;
+    border-radius: 8px;
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+    font-size: 15px;
+    padding: 12px 28px;
+  }
+
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .btn-secondary {
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+  }
+
+  .btn-secondary:hover { border-color: var(--accent); }
+
+  .btn-danger {
+    background: transparent;
+    color: var(--red);
+    border: 1px solid var(--border);
+    font-size: 12px;
+    padding: 6px 12px;
+  }
+
+  .btn-danger:hover { border-color: var(--red); }
+
+  .button-row {
+    display: flex;
+    gap: 12px;
+    margin-top: 18px;
+  }
+
+  /* Event log */
+  .log-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 20px 20px 20px;
+  }
+
+  .log-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 200px;
+    color: var(--text-secondary);
+    font-size: 14px;
+  }
+
+  .log-entry {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+
+  .log-entry:hover { border-color: var(--accent); }
+
+  .log-entry-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .log-entry-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  .log-time {
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-family: monospace;
+    flex-shrink: 0;
+  }
+
+  .log-type {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+  }
+
+  .log-source {
+    font-size: 11px;
+    color: var(--purple);
+  }
+
+  .log-tenant {
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+
+  .log-status {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+
+  .log-status.success {
+    color: var(--green);
+    background: rgba(34, 197, 94, 0.1);
+  }
+
+  .log-status.error {
+    color: var(--red);
+    background: rgba(239, 68, 68, 0.1);
+  }
+
+  .log-detail {
+    display: none;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+
+  .log-detail.open { display: block; }
+
+  .log-detail pre {
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px;
+    font-size: 11px;
+    font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+    overflow-x: auto;
+    color: var(--text-secondary);
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  /* Progress bar */
+  .progress-bar {
+    display: none;
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    margin-top: 10px;
+    overflow: hidden;
+  }
+
+  .progress-bar.active { display: block; }
+
+  .progress-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+    transition: width 0.15s;
+    width: 0%;
+  }
+
+  /* Bottom bar */
+  .bottom-bar {
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border);
+    padding: 10px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+  }
+
+  .status-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+    background: var(--orange);
+  }
+
+  .status-dot.connected { background: var(--green); }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-left">
+    <h1>Event Gateway <span>— Test Producer</span></h1>
+  </div>
+  <div class="header-left">
+    <span style="color: var(--text-secondary); font-size: 13px;">Published</span>
+    <div class="badge" id="headerCount">0</div>
+  </div>
+</div>
+
+<!-- Targets Panel -->
+<div id="targets-panel" style="margin:0 16px 8px 16px; background:var(--bg-secondary); border-radius:8px; border:1px solid var(--border); padding:12px;">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+    <span style="font-weight:600; color:var(--text-primary);">Active Subscriptions (delivery targets)</span>
+    <button class="btn btn-secondary" onclick="loadTargets()" style="font-size:11px; padding:4px 10px;">Refresh</button>
+  </div>
+  <div id="targets-list" style="font-size:12px; color:var(--text-secondary);">Loading...</div>
+</div>
+
+<!-- Main panels -->
+<div class="main">
+
+  <!-- Left Panel: Event Builder -->
+  <div class="panel panel-left">
+    <div class="panel-header">
+      <div class="panel-title">Event Builder</div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Event Type</label>
+        <select id="eventTypeSelect">
+          <option value="invoice.created">invoice.created</option>
+          <option value="invoice.paid">invoice.paid</option>
+          <option value="payment.failed">payment.failed</option>
+          <option value="order.created">order.created</option>
+          <option value="order.updated">order.updated</option>
+          <option value="customer.created">customer.created</option>
+          <option value="customer.updated">customer.updated</option>
+          <option value="shipment.created">shipment.created</option>
+          <option value="subscription.renewed">subscription.renewed</option>
+          <option value="__custom__">Custom...</option>
+        </select>
+        <input type="text" id="eventTypeCustom" placeholder="e.g. my.custom.event" style="display:none; margin-top:6px;">
+      </div>
+      <div class="form-group">
+        <label>Source Service</label>
+        <select id="sourceSelect">
+          <option value="billing-service">billing-service</option>
+          <option value="customer-service">customer-service</option>
+          <option value="order-service">order-service</option>
+          <option value="payment-service">payment-service</option>
+          <option value="shipping-service">shipping-service</option>
+          <option value="__custom__">Custom...</option>
+        </select>
+        <input type="text" id="sourceCustom" placeholder="e.g. my-service" style="display:none; margin-top:6px;">
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Tenant ID</label>
+        <input type="text" id="tenantId" value="tenant_1">
+      </div>
+      <div class="form-group">
+        <label>Entity ID</label>
+        <input type="text" id="entityId" placeholder="Auto-generated if empty">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Send To (optional subscriber UUID)</label>
+      <input type="text" id="sendTo" placeholder="e.g. 550e8400-e29b-41d4-a716-446655440000">
+    </div>
+
+    <div class="form-group">
+      <label>Metadata</label>
+      <div class="metadata-rows" id="metadataRows">
+        <div class="metadata-row">
+          <input type="text" class="meta-key" value="user_id" placeholder="Key">
+          <input type="text" class="meta-val" value="usr_12345" placeholder="Value">
+          <button class="btn-icon remove" onclick="removeMetaRow(this)" title="Remove">&times;</button>
+        </div>
+        <div class="metadata-row">
+          <input type="text" class="meta-key" value="company_id" placeholder="Key">
+          <input type="text" class="meta-val" value="comp_67890" placeholder="Value">
+          <button class="btn-icon remove" onclick="removeMetaRow(this)" title="Remove">&times;</button>
+        </div>
+      </div>
+      <button class="btn-add-row" onclick="addMetaRow()">+ Add field</button>
+    </div>
+
+    <div class="form-group">
+      <label>Payload (JSON)</label>
+      <textarea class="code" id="payload" rows="8" spellcheck="false">{
+  "amount": 9999,
+  "currency": "USD",
+  "description": "Test event from producer UI",
+  "line_items": [
+    { "sku": "WIDGET-001", "qty": 2, "price": 4999 }
+  ]
+}</textarea>
+    </div>
+
+    <div class="button-row">
+      <button class="btn btn-primary" id="btnPublish" onclick="publishEvent()">Publish Event</button>
+      <button class="btn btn-secondary" id="btnBatch" onclick="publishBatch()">Publish 10 Random</button>
+    </div>
+    <div class="progress-bar" id="progressBar"><div class="progress-fill" id="progressFill"></div></div>
+  </div>
+
+  <!-- Right Panel: Event Log -->
+  <div class="panel-right">
+    <div class="panel-header" style="padding: 20px 20px 0 20px;">
+      <div class="panel-title">Event Log</div>
+      <button class="btn btn-danger" onclick="clearLog()">Clear</button>
+    </div>
+    <div class="log-container" id="logContainer">
+      <div class="log-empty" id="logEmpty">No events published yet.</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Bottom bar -->
+<div class="bottom-bar">
+  <div>
+    <span class="status-dot" id="statusDot"></span>
+    <span id="statusText">Connecting...</span>
+  </div>
+  <div>Total published: <strong id="totalCount">0</strong></div>
+</div>
+
+<script>
+(function() {
+  // State
+  let sessionCount = 0;
+
+  // DOM refs
+  const headerCount = document.getElementById('headerCount');
+  const totalCount = document.getElementById('totalCount');
+  const logContainer = document.getElementById('logContainer');
+  const logEmpty = document.getElementById('logEmpty');
+  const statusDot = document.getElementById('statusDot');
+  const statusText = document.getElementById('statusText');
+  const progressBar = document.getElementById('progressBar');
+  const progressFill = document.getElementById('progressFill');
+
+  // Toggle custom inputs
+  document.getElementById('eventTypeSelect').addEventListener('change', function() {
+    document.getElementById('eventTypeCustom').style.display = this.value === '__custom__' ? 'block' : 'none';
+  });
+  document.getElementById('sourceSelect').addEventListener('change', function() {
+    document.getElementById('sourceCustom').style.display = this.value === '__custom__' ? 'block' : 'none';
+  });
+
+  // Tab support in textarea
+  document.getElementById('payload').addEventListener('keydown', function(e) {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const start = this.selectionStart;
+      const end = this.selectionEnd;
+      this.value = this.value.substring(0, start) + '  ' + this.value.substring(end);
+      this.selectionStart = this.selectionEnd = start + 2;
+    }
+  });
+
+  // Check connection
+  function checkStatus() {
+    fetch('/api/stats')
+      .then(r => r.json())
+      .then(data => {
+        statusDot.className = 'status-dot connected';
+        statusText.textContent = 'Kafka: ' + data.brokers + ' | Topic: ' + data.topic;
+      })
+      .catch(() => {
+        statusDot.className = 'status-dot';
+        statusText.textContent = 'Disconnected';
+      });
+  }
+  checkStatus();
+  setInterval(checkStatus, 10000);
+
+  // Metadata helpers
+  window.addMetaRow = function() {
+    const container = document.getElementById('metadataRows');
+    const row = document.createElement('div');
+    row.className = 'metadata-row';
+    row.innerHTML = '<input type="text" class="meta-key" placeholder="Key">' +
+      '<input type="text" class="meta-val" placeholder="Value">' +
+      '<button class="btn-icon remove" onclick="removeMetaRow(this)" title="Remove">&times;</button>';
+    container.appendChild(row);
+  };
+
+  window.removeMetaRow = function(btn) {
+    btn.parentElement.remove();
+  };
+
+  // Build event from form
+  function buildEvent() {
+    const typeSelect = document.getElementById('eventTypeSelect');
+    const eventType = typeSelect.value === '__custom__'
+      ? document.getElementById('eventTypeCustom').value
+      : typeSelect.value;
+
+    const srcSelect = document.getElementById('sourceSelect');
+    const source = srcSelect.value === '__custom__'
+      ? document.getElementById('sourceCustom').value
+      : srcSelect.value;
+
+    const tenantId = document.getElementById('tenantId').value || 'tenant_1';
+    const entityId = document.getElementById('entityId').value || generateId();
+    const sendTo = document.getElementById('sendTo').value.trim();
+
+    // Gather metadata
+    const metadata = {};
+    document.querySelectorAll('.metadata-row').forEach(row => {
+      const k = row.querySelector('.meta-key').value.trim();
+      const v = row.querySelector('.meta-val').value.trim();
+      if (k) metadata[k] = v;
+    });
+    if (sendTo) metadata['send_to'] = sendTo;
+
+    // Parse payload
+    let payload;
+    try {
+      payload = JSON.parse(document.getElementById('payload').value);
+    } catch (e) {
+      throw new Error('Invalid JSON payload: ' + e.message);
+    }
+
+    return {
+      event_type: eventType,
+      source_service: source,
+      tenant_id: tenantId,
+      entity_id: entityId,
+      version: '1',
+      metadata: metadata,
+      payload: payload
+    };
+  }
+
+  // Publish single event
+  window.publishEvent = async function() {
+    const btn = document.getElementById('btnPublish');
+    btn.disabled = true;
+    btn.textContent = 'Publishing...';
+
+    try {
+      const evt = buildEvent();
+      const res = await fetch('/api/publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(evt)
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        addLogEntry(data, 'success');
+        sessionCount++;
+        updateCounters();
+      } else {
+        addLogEntry(evt, 'error', data.error || 'Unknown error');
+      }
+    } catch (e) {
+      addLogEntry({}, 'error', e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Publish Event';
+    }
+  };
+
+  // Publish batch of random events
+  window.publishBatch = async function() {
+    const btn = document.getElementById('btnBatch');
+    btn.disabled = true;
+    btn.textContent = 'Publishing...';
+    progressBar.className = 'progress-bar active';
+    progressFill.style.width = '0%';
+
+    // Use event types from the first target subscription if available,
+    // so all batch events actually reach a consumer.
+    let types = [
+      'invoice.created', 'invoice.paid', 'payment.failed',
+      'order.created', 'order.updated', 'customer.created',
+      'customer.updated', 'shipment.created', 'subscription.renewed'
+    ];
+    if (cachedTargets.length > 0) {
+      const targetTypes = cachedTargets.flatMap(t => Array.isArray(t.event_types) ? t.event_types : []);
+      if (targetTypes.length > 0) {
+        types = [...new Set(targetTypes)]; // unique types from all subscriptions
+      }
+    }
+    const sources = [
+      'billing-service', 'customer-service', 'order-service',
+      'payment-service', 'shipping-service'
+    ];
+
+    const names = ['Alice', 'Bob', 'Charlie', 'Dana', 'Eve', 'Frank', 'Grace', 'Hank', 'Ivy', 'Jack'];
+    const companies = ['Acme Corp', 'Globex Inc', 'Initech', 'Umbrella LLC', 'Stark Industries'];
+    const statuses = ['pending', 'completed', 'failed', 'refunded', 'cancelled'];
+
+    // Build all 10 events
+    const batch = [];
+    for (let i = 0; i < 10; i++) {
+      const evtType = types[i % types.length];
+      const name = names[i];
+      const company = companies[Math.floor(Math.random() * companies.length)];
+      const amount = Math.floor(Math.random() * 50000) / 100;
+      const status = statuses[Math.floor(Math.random() * statuses.length)];
+      const entityNum = 1000 + i;
+
+      batch.push({
+        event_type: evtType,
+        source_service: sources[Math.floor(Math.random() * sources.length)],
+        tenant_id: 'tenant_' + (Math.floor(Math.random() * 5) + 1),
+        entity_id: evtType.split('.')[0] + '_' + entityNum,
+        version: '1',
+        metadata: {
+          user_id: 'usr_' + (10000 + Math.floor(Math.random() * 89999)),
+          company_id: 'co_' + company.toLowerCase().replace(/\s+/g, '_'),
+          batch_index: String(i + 1)
+        },
+        payload: {
+          name: name,
+          company: company,
+          amount: amount,
+          currency: ['USD', 'EUR', 'GBP'][Math.floor(Math.random() * 3)],
+          status: status,
+          item_count: Math.floor(Math.random() * 20) + 1,
+          description: evtType.replace('.', ' ') + ' for ' + name + ' at ' + company,
+          batch_event: true
+        }
+      });
+    }
+
+    progressFill.style.width = '50%';
+
+    // Send all 10 in one request
+    try {
+      const res = await fetch('/api/publish-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(batch)
+      });
+      const data = await res.json();
+      if (res.ok && data.events) {
+        data.events.forEach(evt => addLogEntry(evt, 'success'));
+        sessionCount += data.published;
+      } else {
+        addLogEntry({event_type: 'batch'}, 'error', data.error || 'Batch failed');
+      }
+    } catch (e) {
+      addLogEntry({event_type: 'batch'}, 'error', e.message);
+    }
+
+    progressFill.style.width = '100%';
+
+    updateCounters();
+    btn.disabled = false;
+    btn.textContent = 'Publish 10 Random';
+    setTimeout(() => { progressBar.className = 'progress-bar'; }, 800);
+  };
+
+  // Log entry
+  function addLogEntry(evt, status, errorMsg) {
+    logEmpty.style.display = 'none';
+
+    const entry = document.createElement('div');
+    entry.className = 'log-entry';
+
+    const now = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    entry.innerHTML =
+      '<div class="log-entry-header">' +
+        '<div class="log-entry-left">' +
+          '<span class="log-time">' + now + '</span>' +
+          '<span class="log-type">' + esc(evt.event_type || '—') + '</span>' +
+          '<span class="log-source">' + esc(evt.source_service || '—') + '</span>' +
+          '<span class="log-tenant">' + esc(evt.tenant_id || '') + '</span>' +
+        '</div>' +
+        '<span class="log-status ' + status + '">' + (status === 'success' ? 'OK' : 'ERR') + '</span>' +
+      '</div>' +
+      '<div class="log-detail">' +
+        (errorMsg ? '<div style="color:var(--red);margin-bottom:8px;font-size:12px;">' + esc(errorMsg) + '</div>' : '') +
+        '<pre>' + esc(JSON.stringify(evt, null, 2)) + '</pre>' +
+      '</div>';
+
+    entry.addEventListener('click', function() {
+      const detail = this.querySelector('.log-detail');
+      detail.classList.toggle('open');
+    });
+
+    logContainer.insertBefore(entry, logContainer.firstChild);
+  }
+
+  // Clear log
+  window.clearLog = function() {
+    logContainer.innerHTML = '<div class="log-empty" id="logEmpty">No events published yet.</div>';
+  };
+
+  // Counters
+  function updateCounters() {
+    headerCount.textContent = sessionCount;
+    totalCount.textContent = sessionCount;
+  }
+
+  // Helpers
+  function generateId() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0;
+      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+  }
+
+  function esc(s) {
+    if (!s) return '';
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  // --- Targets panel ---
+  let cachedTargets = [];
+
+  window.loadTargets = async function() {
+    const el = document.getElementById('targets-list');
+    try {
+      const resp = await fetch('/api/targets');
+      if (!resp.ok) { el.textContent = 'Failed to load'; return; }
+      cachedTargets = await resp.json();
+      if (!cachedTargets || cachedTargets.length === 0) {
+        el.innerHTML = '<span style="color:var(--orange)">No subscriptions found. Create one via the Admin UI or Registry API.</span>';
+        return;
+      }
+
+      el.innerHTML = cachedTargets.map((t, idx) => {
+        const modeColor = t.delivery_mode === 'webhook' ? 'var(--accent)' : 'var(--green)';
+        const modeBadge = `<span style="background:${modeColor}; color:#fff; padding:1px 6px; border-radius:3px; font-size:10px; text-transform:uppercase;">${t.delivery_mode}</span>`;
+        const url = t.delivery_mode === 'webhook' ? ` → ${esc(t.webhook_url || '(no URL)')}` : '';
+        const types = Array.isArray(t.event_types) ? t.event_types.join(', ') : '?';
+
+        let entityInfo = '';
+        if (t.entity_mappings && t.entity_mappings.length > 0) {
+          const mappingStrs = t.entity_mappings.map(m => `${m.entity_type}:${m.entity_id}`);
+          entityInfo = `<br><span style="color:var(--orange)">Entity routes: ${esc(mappingStrs.join(', '))}</span>`;
+        }
+
+        return `<div style="padding:6px 8px; margin:4px 0; background:var(--bg-card); border-radius:4px; border:1px solid var(--border); cursor:pointer;" onclick="selectTarget(${idx})" title="Click to fill event form with matching type">
+          ${modeBadge} <strong>${esc(t.subscriber_name)}</strong>${url}
+          <br><span style="color:var(--text-secondary)">Types: <strong style="color:var(--text-primary)">${esc(types)}</strong></span>
+          ${entityInfo}
+          <br><span style="color:var(--text-secondary); font-size:10px;">sub: ${t.subscription_id.substring(0,12)}... subscriber: ${t.subscriber_id.substring(0,12)}...</span>
+        </div>`;
+      }).join('');
+    } catch(e) {
+      el.textContent = 'Error: ' + e.message;
+    }
+  };
+
+  // Click a target to auto-fill the event form with a matching event type
+  window.selectTarget = function(idx) {
+    const t = cachedTargets[idx];
+    if (!t) return;
+    const types = Array.isArray(t.event_types) ? t.event_types : [];
+    if (types.length > 0) {
+      // Set the event type dropdown
+      const select = document.getElementById('eventType');
+      const firstType = types[0];
+      let found = false;
+      for (const opt of select.options) {
+        if (opt.value === firstType) { select.value = firstType; found = true; break; }
+      }
+      if (!found) {
+        // Add as custom option
+        const opt = document.createElement('option');
+        opt.value = firstType;
+        opt.textContent = firstType;
+        select.appendChild(opt);
+        select.value = firstType;
+      }
+    }
+
+    // Fill entity mappings into metadata
+    if (t.entity_mappings && t.entity_mappings.length > 0) {
+      const m = t.entity_mappings[0]; // use first mapping
+      // Set metadata user_id or company_id
+      const metaContainer = document.getElementById('metadataContainer');
+      if (metaContainer && m.entity_type && m.entity_id) {
+        const rows = metaContainer.querySelectorAll('.metadata-row');
+        let set = false;
+        rows.forEach(row => {
+          const keyInput = row.querySelector('.meta-key');
+          if (keyInput && keyInput.value === m.entity_type + '_id') {
+            row.querySelector('.meta-value').value = m.entity_id;
+            set = true;
+          }
+        });
+      }
+    }
+  };
+
+  // Load targets on startup
+  loadTargets();
+
+})();
+</script>
+</body>
+</html>

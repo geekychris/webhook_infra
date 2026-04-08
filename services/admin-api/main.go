@@ -52,6 +52,8 @@ func main() {
 	r.Use(middleware.RealIP)
 	r.Mount("/", health.Handler(nil))
 
+	r.Get("/", UIHandler().ServeHTTP)
+
 	r.Route("/v1/admin", func(r chi.Router) {
 		r.Get("/subscriptions", h.ListSubscriptions)
 		r.Get("/subscriptions/{id}/stats", h.GetStats)

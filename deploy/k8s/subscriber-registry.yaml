@@ -47,6 +47,8 @@ spec:
                 secretKeyRef:
                   name: event-gateway-secrets
                   key: DATABASE_URL
+            - name: KAFKA_BROKERS
+              value: "kafka.event-gateway.svc.cluster.local:9092"
           resources:
             requests:
               cpu: 100m

@@ -90,6 +90,13 @@ func (s *Scheduler) Next() *ScheduleEntry {
 	return nil
 }
 
+// Len returns the number of known subscriptions.
+func (s *Scheduler) Len() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.order)
+}
+
 // RecordSuccess resets failure tracking for a subscription.
 func (s *Scheduler) RecordSuccess(subID string) {
 	s.mu.Lock()

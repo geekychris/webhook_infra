@@ -11,8 +11,10 @@ import (
 	"github.com/example/event-gateway/internal/config"
 	"github.com/example/event-gateway/internal/health"
 	"github.com/example/event-gateway/internal/observability"
+	"github.com/example/event-gateway/internal/readyqueue"
 	queuev1 "github.com/example/event-gateway/internal/proto/queue/v1"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -21,6 +23,7 @@ func main() {
 	logger := observability.NewLogger("stream-gateway")
 
 	queueAddr := config.Env("QUEUE_SERVICE_ADDR", "localhost:50052")
+	redisAddr := config.Env("REDIS_ADDR", "localhost:6379")
 	httpPort := config.Env("HTTP_PORT", "8090")
 	instanceID := config.Env("INSTANCE_ID", uuid.New().String())
 
@@ -36,7 +39,19 @@ func main() {
 
 	queueClient := queuev1.NewQueueServiceClient(conn)
 
-	handler := NewStreamHandler(queueClient, instanceID, logger)
+	// Connect to Redis for event notifications.
+	var readyQ *readyqueue.Queue
+	if redisAddr != "" {
+		rdb := redis.NewClient(&redis.Options{Addr: redisAddr})
+		if err := rdb.Ping(ctx).Err(); err != nil {
+			logger.Warn("redis not available, streaming will use polling fallback", "error", err)
+		} else {
+			readyQ = readyqueue.New(rdb)
+			logger.Info("redis connected for stream notifications", "addr", redisAddr)
+		}
+	}
+
+	handler := NewStreamHandler(queueClient, readyQ, instanceID, logger)
 
 	mux := http.NewServeMux()
 	mux.Handle("/", health.Handler(nil))

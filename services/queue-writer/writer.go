@@ -4,59 +4,51 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
-	"time"
 
 	"github.com/example/event-gateway/internal/kafka"
 	"github.com/example/event-gateway/internal/model"
+	"github.com/example/event-gateway/internal/readyqueue"
 	queuev1 "github.com/example/event-gateway/internal/proto/queue/v1"
 )
 
-// Writer consumes SendableEvent messages from Kafka and appends them to the
-// subscriber queue service via gRPC.
+// Writer consumes SendableEvent messages from Kafka, appends them to the
+// subscriber queue service via gRPC, and signals the ready queue in Redis
+// so dispatchers are notified immediately.
 type Writer struct {
 	consumer    *kafka.Consumer
 	queueClient queuev1.QueueServiceClient
+	readyQ      *readyqueue.Queue
 	logger      *slog.Logger
 }
 
-// NewWriter creates a new queue writer.
-func NewWriter(consumer *kafka.Consumer, queueClient queuev1.QueueServiceClient, logger *slog.Logger) *Writer {
+// NewWriter creates a new queue writer. readyQ may be nil if Redis is not available.
+func NewWriter(consumer *kafka.Consumer, queueClient queuev1.QueueServiceClient, readyQ *readyqueue.Queue, logger *slog.Logger) *Writer {
 	return &Writer{
 		consumer:    consumer,
 		queueClient: queueClient,
+		readyQ:      readyQ,
 		logger:      logger,
 	}
 }
 
-// Run starts consuming messages. Blocks until ctx is cancelled.
 func (w *Writer) Run(ctx context.Context) error {
 	w.logger.Info("queue-writer starting consumption from sendable-events")
 	return w.consumer.Consume(ctx, w.handleMessage)
 }
 
-// handleMessage processes a single Kafka message. It deserializes the
-// SendableEvent, converts the CloudEvent to a protobuf CloudEventProto,
-// and appends it to the queue service. Returns nil only on success so
-// the consumer commits the offset.
 func (w *Writer) handleMessage(ctx context.Context, key, value []byte) error {
 	var se model.SendableEvent
 	if err := json.Unmarshal(value, &se); err != nil {
-		w.logger.Error("failed to unmarshal SendableEvent",
-			"error", err,
-			"key", string(key),
-		)
-		// Return error so the offset is not committed.
+		w.logger.Error("failed to unmarshal SendableEvent", "error", err, "key", string(key))
 		return err
 	}
 
 	ceProto := cloudEventToProto(&se.Event)
 
-	req := &queuev1.AppendRequest{
+	_, err := w.queueClient.Append(ctx, &queuev1.AppendRequest{
 		SubscriptionId: string(se.SubscriptionID),
 		Events:         []*queuev1.CloudEventProto{ceProto},
-	}
-
-	resp, err := w.queueClient.Append(ctx, req)
+	})
 	if err != nil {
 		w.logger.Error("failed to append to queue service",
 			"subscription_id", se.SubscriptionID,
@@ -66,16 +58,21 @@ func (w *Writer) handleMessage(ctx context.Context, key, value []byte) error {
 		return err
 	}
 
-	w.logger.Debug("appended event to queue",
-		"subscription_id", se.SubscriptionID,
-		"event_id", se.Event.ID,
-		"position", resp.FirstPosition,
-	)
+	// Signal the ready queue — webhook dispatcher wakes up immediately.
+	// Also notify the pub/sub channel — streaming sessions wake up immediately.
+	if w.readyQ != nil {
+		subIDStr := string(se.SubscriptionID)
+		if err := w.readyQ.Signal(ctx, subIDStr); err != nil {
+			w.logger.Warn("failed to signal ready queue", "subscription_id", subIDStr, "error", err)
+		}
+		if err := w.readyQ.Notify(ctx, subIDStr); err != nil {
+			w.logger.Warn("failed to notify subscription", "subscription_id", subIDStr, "error", err)
+		}
+	}
 
 	return nil
 }
 
-// cloudEventToProto converts a model.CloudEvent to a queuev1.CloudEventProto.
 func cloudEventToProto(ce *model.CloudEvent) *queuev1.CloudEventProto {
 	return &queuev1.CloudEventProto{
 		SpecVersion:     ce.SpecVersion,
@@ -90,18 +87,6 @@ func cloudEventToProto(ce *model.CloudEvent) *queuev1.CloudEventProto {
 	}
 }
 
-// Close shuts down the writer's consumer.
 func (w *Writer) Close() error {
 	return w.consumer.Close()
-}
-
-// retryDelay returns an exponential backoff duration capped at 30 seconds.
-// Not used in the current flow (kafka consumer handles retries), but
-// available for future use.
-func retryDelay(attempt int) time.Duration {
-	d := time.Duration(1<<uint(attempt)) * time.Second
-	if d > 30*time.Second {
-		d = 30 * time.Second
-	}
-	return d
 }

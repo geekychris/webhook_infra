@@ -545,9 +545,34 @@
 
     <div class="button-row">
       <button class="btn btn-primary" id="btnPublish" onclick="publishEvent()">Publish Event</button>
-      <button class="btn btn-secondary" id="btnBatch" onclick="publishBatch()">Publish 10 Random</button>
     </div>
-    <div class="progress-bar" id="progressBar"><div class="progress-fill" id="progressFill"></div></div>
+
+    <div style="margin-top:16px;padding:14px;background:var(--bg-card);border-radius:8px;border:1px solid var(--border);">
+      <div style="font-weight:600;margin-bottom:10px;color:var(--text-primary);">Batch Generator</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div class="form-group" style="margin:0">
+          <label>Number of Events</label>
+          <input type="number" id="batchCount" value="10" min="1" max="1000" style="width:100%">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label>Tenant ID <span style="color:var(--text-secondary);font-size:10px">(blank=random)</span></label>
+          <input type="text" id="batchTenant" placeholder="random" style="width:100%">
+        </div>
+      </div>
+      <div class="form-group" style="margin:8px 0 0 0">
+        <label>Event Types <span style="color:var(--text-secondary);font-size:10px">(comma-separated, blank=use types from active subscriptions)</span></label>
+        <input type="text" id="batchTypes" placeholder="invoice.paid, order.created, payment.failed" style="width:100%">
+      </div>
+      <div class="form-group" style="margin:8px 0 0 0">
+        <label>Source Services <span style="color:var(--text-secondary);font-size:10px">(comma-separated, blank=random)</span></label>
+        <input type="text" id="batchSources" placeholder="billing-service, order-service" style="width:100%">
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:10px;">
+        <button class="btn btn-secondary" id="btnBatch" onclick="publishBatch()">Generate &amp; Publish</button>
+        <span id="batchStatus" style="color:var(--text-secondary);font-size:12px;"></span>
+      </div>
+      <div class="progress-bar" id="progressBar"><div class="progress-fill" id="progressFill"></div></div>
+    </div>
   </div>
 
   <!-- Right Panel: Event Log -->
@@ -714,93 +739,113 @@
   // Publish batch of random events
   window.publishBatch = async function() {
     const btn = document.getElementById('btnBatch');
+    const statusEl = document.getElementById('batchStatus');
     btn.disabled = true;
     btn.textContent = 'Publishing...';
+    statusEl.textContent = '';
     progressBar.className = 'progress-bar active';
     progressFill.style.width = '0%';
 
-    // Use event types from the first target subscription if available,
-    // so all batch events actually reach a consumer.
-    let types = [
-      'invoice.created', 'invoice.paid', 'payment.failed',
-      'order.created', 'order.updated', 'customer.created',
-      'customer.updated', 'shipment.created', 'subscription.renewed'
-    ];
-    if (cachedTargets.length > 0) {
+    // Read user inputs
+    const count = Math.min(Math.max(parseInt(document.getElementById('batchCount').value) || 10, 1), 1000);
+    const tenantInput = document.getElementById('batchTenant').value.trim();
+    const typesInput = document.getElementById('batchTypes').value.trim();
+    const sourcesInput = document.getElementById('batchSources').value.trim();
+
+    // Determine event types
+    let types;
+    if (typesInput) {
+      types = typesInput.split(',').map(t => t.trim()).filter(Boolean);
+    } else if (cachedTargets.length > 0) {
       const targetTypes = cachedTargets.flatMap(t => Array.isArray(t.event_types) ? t.event_types : []);
-      if (targetTypes.length > 0) {
-        types = [...new Set(targetTypes)]; // unique types from all subscriptions
-      }
+      types = [...new Set(targetTypes)];
+    } else {
+      types = ['invoice.created','invoice.paid','payment.failed','order.created','order.updated',
+               'customer.created','customer.updated','shipment.created','subscription.renewed'];
     }
-    const sources = [
-      'billing-service', 'customer-service', 'order-service',
-      'payment-service', 'shipping-service'
-    ];
 
-    const names = ['Alice', 'Bob', 'Charlie', 'Dana', 'Eve', 'Frank', 'Grace', 'Hank', 'Ivy', 'Jack'];
-    const companies = ['Acme Corp', 'Globex Inc', 'Initech', 'Umbrella LLC', 'Stark Industries'];
-    const statuses = ['pending', 'completed', 'failed', 'refunded', 'cancelled'];
+    // Determine sources
+    let sources;
+    if (sourcesInput) {
+      sources = sourcesInput.split(',').map(s => s.trim()).filter(Boolean);
+    } else {
+      sources = ['billing-service','customer-service','order-service','payment-service','shipping-service'];
+    }
 
-    // Build all 10 events
+    // Determine tenant pool
+    const tenants = tenantInput ? [tenantInput] : ['tenant_1','tenant_2','tenant_3','tenant_4','tenant_5'];
+
+    const names = ['Alice','Bob','Charlie','Dana','Eve','Frank','Grace','Hank','Ivy','Jack',
+                   'Kate','Leo','Mia','Noah','Olga','Paul','Quinn','Rosa','Sam','Tina'];
+    const companies = ['Acme Corp','Globex Inc','Initech','Umbrella LLC','Stark Industries'];
+    const currencies = ['USD','EUR','GBP','JPY','AUD'];
+    const statuses = ['pending','completed','failed','refunded','cancelled'];
+
+    // Build batch
     const batch = [];
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < count; i++) {
       const evtType = types[i % types.length];
-      const name = names[i];
+      const name = names[i % names.length];
       const company = companies[Math.floor(Math.random() * companies.length)];
-      const amount = Math.floor(Math.random() * 50000) / 100;
-      const status = statuses[Math.floor(Math.random() * statuses.length)];
-      const entityNum = 1000 + i;
 
       batch.push({
         event_type: evtType,
         source_service: sources[Math.floor(Math.random() * sources.length)],
-        tenant_id: 'tenant_' + (Math.floor(Math.random() * 5) + 1),
-        entity_id: evtType.split('.')[0] + '_' + entityNum,
+        tenant_id: tenants[Math.floor(Math.random() * tenants.length)],
+        entity_id: evtType.split('.')[0] + '_' + (1000 + i),
         version: '1',
         metadata: {
           user_id: 'usr_' + (10000 + Math.floor(Math.random() * 89999)),
           company_id: 'co_' + company.toLowerCase().replace(/\s+/g, '_'),
-          batch_index: String(i + 1)
+          batch_index: String(i + 1),
+          batch_size: String(count)
         },
         payload: {
           name: name,
           company: company,
-          amount: amount,
-          currency: ['USD', 'EUR', 'GBP'][Math.floor(Math.random() * 3)],
-          status: status,
+          amount: Math.floor(Math.random() * 50000) / 100,
+          currency: currencies[Math.floor(Math.random() * currencies.length)],
+          status: statuses[Math.floor(Math.random() * statuses.length)],
           item_count: Math.floor(Math.random() * 20) + 1,
-          description: evtType.replace('.', ' ') + ' for ' + name + ' at ' + company,
-          batch_event: true
+          description: evtType.replace('.', ' ') + ' #' + (i+1) + ' for ' + name + ' at ' + company
         }
       });
     }
 
-    progressFill.style.width = '50%';
+    progressFill.style.width = '30%';
+    statusEl.textContent = 'Sending ' + count + ' events...';
 
-    // Send all 10 in one request
-    try {
-      const res = await fetch('/api/publish-batch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(batch)
-      });
-      const data = await res.json();
-      if (res.ok && data.events) {
-        data.events.forEach(evt => addLogEntry(evt, 'success'));
-        sessionCount += data.published;
-      } else {
-        addLogEntry({event_type: 'batch'}, 'error', data.error || 'Batch failed');
+    // Send in chunks of 100 to avoid huge single requests
+    const chunkSize = 100;
+    let published = 0;
+    for (let start = 0; start < batch.length; start += chunkSize) {
+      const chunk = batch.slice(start, start + chunkSize);
+      try {
+        const res = await fetch('/api/publish-batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(chunk)
+        });
+        const data = await res.json();
+        if (res.ok && data.events) {
+          data.events.forEach(evt => addLogEntry(evt, 'success'));
+          published += data.published;
+          sessionCount += data.published;
+        } else {
+          addLogEntry({event_type: 'batch'}, 'error', data.error || 'Chunk failed');
+        }
+      } catch (e) {
+        addLogEntry({event_type: 'batch'}, 'error', e.message);
       }
-    } catch (e) {
-      addLogEntry({event_type: 'batch'}, 'error', e.message);
+      progressFill.style.width = Math.round(30 + 70 * (start + chunk.length) / batch.length) + '%';
     }
 
     progressFill.style.width = '100%';
-
+    statusEl.textContent = published + '/' + count + ' events published';
     updateCounters();
     btn.disabled = false;
-    btn.textContent = 'Publish 10 Random';
-    setTimeout(() => { progressBar.className = 'progress-bar'; }, 800);
+    btn.textContent = 'Generate & Publish';
+    setTimeout(() => { progressBar.className = 'progress-bar'; }, 1000);
   };
 
   // Log entry

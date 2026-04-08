@@ -4,14 +4,13 @@ import com.eventconduit.consumer.StreamConsumerService.ConnectionState;
 import com.vaadin.flow.component.*;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
-import com.vaadin.flow.component.select.Select;
 import com.vaadin.flow.component.details.Details;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.html.*;
 import com.vaadin.flow.component.notification.Notification;
+import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
-import com.vaadin.flow.component.textfield.NumberField;
 import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
@@ -30,16 +29,16 @@ public class ConsumerView extends VerticalLayout {
     private final UI ui;
 
     private final TextField gatewayField = new TextField("Gateway URL");
-    private final Select<RegistryClient.StreamTarget> subscriptionPicker = new Select<>();
+    private final TextField subscriptionField = new TextField("Subscription ID");
     private final TextField tokenField = new TextField("Auth Token");
-    private final NumberField resumeField = new NumberField("Resume After");
+    private final TextField resumeField = new TextField("Resume After (position)");
     private final Button connectBtn = new Button("Connect");
     private final Button disconnectBtn = new Button("Disconnect");
-    private final Button clearBtn = new Button("Clear");
-    private final Button refreshBtn = new Button("Refresh Subscriptions");
+    private final Button clearBtn = new Button("Clear Events");
 
     private final Span statusBadge = new Span();
     private final Span statsLabel = new Span();
+    private final VerticalLayout subscriptionList = new VerticalLayout();
     private final Grid<ReceivedEvent> grid = new Grid<>();
     private final Pre detailPre = new Pre();
 
@@ -58,9 +57,9 @@ public class ConsumerView extends VerticalLayout {
         setSizeFull();
         setPadding(true);
         setSpacing(true);
-        getStyle().set("background", "#0f1923").set("color", "#e8edf2");
 
         add(buildHeader());
+        add(buildSubscriptionPicker());
         add(buildConnectionPanel());
         add(buildStatusBar());
         add(buildEventGrid());
@@ -73,37 +72,46 @@ public class ConsumerView extends VerticalLayout {
     }
 
     private Component buildHeader() {
-        var title = new H2("Event Conduit");
-        title.getStyle().set("color", "#3b82f6").set("margin", "0");
-        var subtitle = new Span("— Java Stream Consumer");
-        subtitle.getStyle().set("color", "#8899aa").set("margin-left", "8px");
-        var header = new HorizontalLayout(title, subtitle);
-        header.setAlignItems(Alignment.BASELINE);
-        return header;
+        H2 title = new H2("Event Conduit — Java Stream Consumer");
+        title.getStyle().set("margin", "0 0 8px 0");
+        return title;
+    }
+
+    private Component buildSubscriptionPicker() {
+        H4 heading = new H4("Available Streaming Subscriptions");
+        heading.getStyle().set("margin", "0");
+
+        Button refreshBtn = new Button("Reload", e -> loadSubscriptions());
+        refreshBtn.addThemeVariants(ButtonVariant.LUMO_SMALL, ButtonVariant.LUMO_TERTIARY);
+
+        HorizontalLayout header = new HorizontalLayout(heading, refreshBtn);
+        header.setAlignItems(FlexComponent.Alignment.CENTER);
+
+        subscriptionList.setPadding(false);
+        subscriptionList.setSpacing(false);
+        subscriptionList.getStyle().set("gap", "4px");
+
+        VerticalLayout panel = new VerticalLayout(header, subscriptionList);
+        panel.setPadding(true);
+        panel.setSpacing(true);
+        panel.getStyle()
+            .set("background", "var(--lumo-contrast-5pct)")
+            .set("border-radius", "8px");
+        return panel;
     }
 
     private Component buildConnectionPanel() {
         gatewayField.setValue("ws://localhost:18090/v1/stream");
-        gatewayField.setWidth("300px");
+        gatewayField.setWidth("350px");
 
-        subscriptionPicker.setLabel("Subscription");
-        subscriptionPicker.setWidth("450px");
-        subscriptionPicker.setPlaceholder("Select a streaming subscription...");
-        subscriptionPicker.setItemLabelGenerator(RegistryClient.StreamTarget::displayLabel);
-        subscriptionPicker.addValueChangeListener(e -> {
-            var target = e.getValue();
-            if (target != null) {
-                tokenField.setValue(target.streamToken() != null ? target.streamToken() : "");
-            }
-        });
+        subscriptionField.setWidth("320px");
+        subscriptionField.setPlaceholder("Click a subscription above or paste ID");
 
-        tokenField.setWidth("280px");
+        tokenField.setWidth("320px");
         tokenField.setPlaceholder("stk_...");
 
-        resumeField.setWidth("130px");
-        resumeField.setValue(0.0);
-        resumeField.setMin(0);
-        resumeField.setStepButtonsVisible(true);
+        resumeField.setWidth("120px");
+        resumeField.setValue("0");
 
         connectBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
         connectBtn.addClickListener(e -> onConnect());
@@ -114,116 +122,136 @@ public class ConsumerView extends VerticalLayout {
         clearBtn.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
         clearBtn.addClickListener(e -> onClear());
 
-        refreshBtn.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
-        refreshBtn.addClickListener(e -> loadSubscriptions());
-
-        var row1 = new HorizontalLayout(gatewayField, subscriptionPicker, refreshBtn);
+        HorizontalLayout row1 = new HorizontalLayout(gatewayField, subscriptionField, tokenField);
         row1.setSpacing(true);
-        row1.setAlignItems(Alignment.END);
 
-        var row2 = new HorizontalLayout(tokenField, resumeField, connectBtn, disconnectBtn, clearBtn);
+        HorizontalLayout row2 = new HorizontalLayout(resumeField, connectBtn, disconnectBtn, clearBtn);
         row2.setSpacing(true);
-        row2.setAlignItems(Alignment.END);
+        row2.setAlignItems(FlexComponent.Alignment.END);
 
-        var panel = new VerticalLayout(row1, row2);
+        VerticalLayout panel = new VerticalLayout(row1, row2);
         panel.setSpacing(false);
         panel.setPadding(true);
         panel.getStyle()
-            .set("background", "#1a2736")
-            .set("border-radius", "8px")
-            .set("border", "1px solid #2a3f55");
+            .set("background", "var(--lumo-contrast-5pct)")
+            .set("border-radius", "8px");
         return panel;
     }
 
     private Component buildStatusBar() {
         statusBadge.getStyle()
-            .set("padding", "2px 10px")
+            .set("padding", "3px 12px")
             .set("border-radius", "4px")
-            .set("font-size", "12px")
+            .set("font-size", "13px")
             .set("font-weight", "600");
 
-        statsLabel.getStyle().set("color", "#8899aa").set("font-size", "13px");
+        statsLabel.getStyle().set("font-size", "13px");
 
-        var bar = new HorizontalLayout(statusBadge, statsLabel);
+        HorizontalLayout bar = new HorizontalLayout(statusBadge, statsLabel);
         bar.setSpacing(true);
-        bar.setAlignItems(Alignment.CENTER);
+        bar.setAlignItems(FlexComponent.Alignment.CENTER);
         return bar;
     }
 
     private Component buildEventGrid() {
-        grid.addColumn(ReceivedEvent::position).setHeader("Pos").setWidth("70px").setFlexGrow(0);
-        grid.addColumn(ReceivedEvent::eventType).setHeader("Event Type").setWidth("200px");
-        grid.addColumn(ReceivedEvent::source).setHeader("Source").setWidth("150px");
-        grid.addColumn(ReceivedEvent::subject).setHeader("Subject").setWidth("150px");
+        grid.addColumn(ReceivedEvent::position).setHeader("Pos").setWidth("80px").setFlexGrow(0);
+        grid.addColumn(ReceivedEvent::eventType).setHeader("Event Type").setFlexGrow(2);
+        grid.addColumn(ReceivedEvent::source).setHeader("Source").setFlexGrow(1);
+        grid.addColumn(ReceivedEvent::subject).setHeader("Subject").setFlexGrow(1);
         grid.addColumn(e -> e.eventId() != null && e.eventId().length() > 12
                 ? e.eventId().substring(0, 12) + "..." : e.eventId())
-            .setHeader("Event ID").setWidth("130px");
+            .setHeader("Event ID").setFlexGrow(1);
         grid.addColumn(e -> TIME_FMT.format(e.receivedAt())).setHeader("Received").setWidth("120px");
 
-        grid.setHeight("400px");
+        grid.setHeight("350px");
         grid.setWidthFull();
-        grid.addThemeNames("no-border", "row-stripes");
-        grid.getStyle()
-            .set("background", "#1a2736")
-            .set("border-radius", "8px")
-            .set("border", "1px solid #2a3f55");
-
         grid.addItemClickListener(e -> showDetail(e.getItem()));
         return grid;
     }
 
     private Component buildDetailPanel() {
         detailPre.getStyle()
-            .set("background", "#0f1923")
-            .set("color", "#86efac")
             .set("padding", "12px")
-            .set("border-radius", "4px")
             .set("font-size", "12px")
             .set("max-height", "250px")
             .set("overflow", "auto")
             .set("white-space", "pre-wrap")
             .set("word-break", "break-all")
             .set("margin", "0");
-        detailPre.setText("Select a subscription above and click Connect.\nClick an event row to see the full CloudEvent JSON.");
+        detailPre.setText("Click a subscription above, then Connect. Click a row to see the full JSON.");
 
-        var details = new Details("Event Detail", detailPre);
+        Details details = new Details("Event Detail (click a row to inspect)", detailPre);
         details.setOpened(true);
         details.setWidthFull();
-        details.getStyle()
-            .set("background", "#1a2736")
-            .set("border-radius", "8px")
-            .set("border", "1px solid #2a3f55");
         return details;
+    }
+
+    // --- Load subscriptions as clickable cards ---
+
+    private void loadSubscriptions() {
+        subscriptionList.removeAll();
+        List<RegistryClient.StreamTarget> targets = registry.getStreamTargets();
+
+        if (targets.isEmpty()) {
+            subscriptionList.add(new Span("No streaming subscriptions found. Create one in the Event Conduit Admin UI (http://localhost:18085)."));
+            return;
+        }
+
+        for (var target : targets) {
+            String types = String.join(", ", target.eventTypes());
+            String label = target.subscriberName() + " — [" + types + "]";
+            String subLabel = "ID: " + target.subscriptionId();
+
+            Button selectBtn = new Button("Use this subscription", click -> {
+                subscriptionField.setValue(target.subscriptionId());
+                tokenField.setValue(target.streamToken() != null ? target.streamToken() : "");
+                Notification.show("Selected: " + target.subscriberName(), 2000, Notification.Position.BOTTOM_END);
+            });
+            selectBtn.addThemeVariants(ButtonVariant.LUMO_SMALL, ButtonVariant.LUMO_PRIMARY);
+
+            Span nameSpan = new Span(label);
+            nameSpan.getStyle().set("font-weight", "600");
+            Span idSpan = new Span(subLabel);
+            idSpan.getStyle().set("font-size", "12px").set("color", "var(--lumo-secondary-text-color)");
+
+            HorizontalLayout row = new HorizontalLayout();
+            row.setWidthFull();
+            row.setAlignItems(FlexComponent.Alignment.CENTER);
+
+            VerticalLayout info = new VerticalLayout(nameSpan, idSpan);
+            info.setPadding(false);
+            info.setSpacing(false);
+
+            row.add(info, selectBtn);
+            row.expand(info);
+            row.getStyle()
+                .set("padding", "8px 12px")
+                .set("background", "var(--lumo-contrast-5pct)")
+                .set("border-radius", "6px");
+
+            subscriptionList.add(row);
+        }
     }
 
     // --- Actions ---
 
-    private void loadSubscriptions() {
-        List<RegistryClient.StreamTarget> targets = registry.getStreamTargets();
-        subscriptionPicker.setItems(targets);
-        if (targets.isEmpty()) {
-            Notification.show("No streaming subscriptions found. Create one in the admin UI.", 5000, Notification.Position.MIDDLE);
-        } else {
-            Notification.show("Found " + targets.size() + " streaming subscription(s)", 2000, Notification.Position.BOTTOM_END);
-        }
-    }
-
     private void onConnect() {
         String gateway = gatewayField.getValue();
-        var target = subscriptionPicker.getValue();
+        String subId = subscriptionField.getValue();
         String token = tokenField.getValue();
-        long resume = resumeField.getValue() != null ? resumeField.getValue().longValue() : 0;
+        long resume = 0;
+        try { resume = Long.parseLong(resumeField.getValue()); } catch (Exception ignored) {}
 
-        if (target == null) {
-            Notification.show("Select a subscription from the dropdown", 3000, Notification.Position.MIDDLE);
+        if (subId == null || subId.isBlank()) {
+            Notification.show("Click 'Use this subscription' above to select one, or paste a subscription ID", 4000, Notification.Position.MIDDLE);
             return;
         }
         if (token == null || token.isBlank()) {
-            Notification.show("Auth token is required (auto-filled when you select a subscription)", 3000, Notification.Position.MIDDLE);
+            Notification.show("Auth token is required", 3000, Notification.Position.MIDDLE);
             return;
         }
 
-        streamService.connect(gateway, target.subscriptionId(), token, resume);
+        streamService.connect(gateway, subId, token, resume);
     }
 
     private void onDisconnect() {
@@ -243,13 +271,13 @@ public class ConsumerView extends VerticalLayout {
             "Type:      " + event.eventType() + "\n" +
             "Source:    " + event.source() + "\n" +
             "Subject:   " + event.subject() + "\n" +
-            "Received:  " + event.receivedAt() + "\n" +
-            "\n--- CloudEvent JSON ---\n\n" +
+            "Received:  " + event.receivedAt() + "\n\n" +
+            "--- CloudEvent JSON ---\n\n" +
             event.rawJson()
         );
     }
 
-    // --- Live updates ---
+    // --- Live updates via @Push ---
 
     private void registerListeners() {
         eventListener = event -> {
@@ -267,14 +295,22 @@ public class ConsumerView extends VerticalLayout {
     }
 
     private void updateStatus() {
-        var state = streamService.getState();
+        ConnectionState state = streamService.getState();
         statusBadge.setText(state.name());
-        statusBadge.getStyle().remove("background").remove("color");
+
         switch (state) {
-            case CONNECTED -> statusBadge.getStyle().set("background", "#22c55e").set("color", "#000");
-            case CONNECTING -> statusBadge.getStyle().set("background", "#f59e0b").set("color", "#000");
-            case ERROR -> statusBadge.getStyle().set("background", "#ef4444").set("color", "#fff");
-            default -> statusBadge.getStyle().set("background", "#2a3f55").set("color", "#8899aa");
+            case CONNECTED -> {
+                statusBadge.getStyle().set("background", "var(--lumo-success-color)").set("color", "white");
+            }
+            case CONNECTING -> {
+                statusBadge.getStyle().set("background", "#f59e0b").set("color", "black");
+            }
+            case ERROR -> {
+                statusBadge.getStyle().set("background", "var(--lumo-error-color)").set("color", "white");
+            }
+            default -> {
+                statusBadge.getStyle().set("background", "var(--lumo-contrast-20pct)").set("color", "var(--lumo-body-text-color)");
+            }
         }
 
         statsLabel.setText(String.format("Total: %d events | Last position: %d | %s",

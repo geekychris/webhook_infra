@@ -278,7 +278,10 @@ func (s *PersistentQueueStore) compactionLoop() {
 }
 
 func (s *PersistentQueueStore) runCompaction() {
-	s.compactByCursor()
+	// Only compact by TTL. Cursor-based compaction is disabled because it
+	// prevents replay — once events are ACKed and compacted, streaming
+	// clients cannot resume from an earlier position. TTL compaction (default
+	// 30 days) provides the actual storage bound.
 	s.compactByTTL()
 }
 

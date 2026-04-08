@@ -67,7 +67,19 @@ func (h *StreamHandler) HandleUpgrade(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var resumeAfter uint64
-	if ra := r.URL.Query().Get("resume_after"); ra != "" {
+	// resume_from=N means "start delivering from position N (inclusive)"
+	// resume_after=N means "start delivering after position N (exclusive, N+1)"
+	// resume_from takes priority if both are provided.
+	if rf := r.URL.Query().Get("resume_from"); rf != "" {
+		pos, err := strconv.ParseUint(rf, 10, 64)
+		if err != nil {
+			http.Error(w, `{"error":"invalid resume_from"}`, http.StatusBadRequest)
+			return
+		}
+		if pos > 0 {
+			resumeAfter = pos - 1 // convert inclusive to exclusive
+		}
+	} else if ra := r.URL.Query().Get("resume_after"); ra != "" {
 		var err error
 		resumeAfter, err = strconv.ParseUint(ra, 10, 64)
 		if err != nil {

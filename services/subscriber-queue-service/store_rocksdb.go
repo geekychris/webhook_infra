@@ -336,11 +336,10 @@ func (s *RocksDBQueueStore) compactionLoop() {
 	}
 }
 
-// runCompaction performs two passes:
-//  1. Cursor-based: delete entries at or below the acked cursor (already delivered)
-//  2. TTL-based: delete entries older than the configured TTL (regardless of delivery)
+// runCompaction deletes events older than the TTL. Cursor-based compaction is
+// disabled to preserve replay capability — streaming clients need to resume
+// from earlier positions. TTL (default 30 days) provides the storage bound.
 func (s *RocksDBQueueStore) runCompaction() {
-	s.compactByCursor()
 	s.compactByTTL()
 }
 

@@ -23,7 +23,6 @@ import java.util.function.Consumer;
 
 @Route("")
 @PageTitle("Event Conduit — Java Stream Consumer")
-@com.vaadin.flow.component.page.Push
 public class ConsumerView extends VerticalLayout {
 
     private final StreamConsumerService streamService;

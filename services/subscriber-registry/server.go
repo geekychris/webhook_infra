@@ -49,9 +49,12 @@ func NewServer(store *Store, entityStore *EntityStore, logger *slog.Logger) *chi
 
 		// Entity mappings
 		r.Post("/entity-mappings", eh.CreateMapping)
+		r.Put("/entity-mappings", eh.UpdateMapping)
 		r.Delete("/entity-mappings", eh.DeleteMapping)
 		r.Get("/entity-mappings", eh.ListMappings)
 		r.Get("/entity-mappings/all", eh.ListAll)
+		r.Get("/entity-mappings/export.csv", eh.ExportCSV)
+		r.Post("/entity-mappings/import", eh.ImportCSV)
 		r.Get("/subscribers/{id}/entity-mappings", eh.ListBySubscriber)
 	})
 

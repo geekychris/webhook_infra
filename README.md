@@ -1,4 +1,6 @@
-# Enterprise Outbound Event Gateway
+# Event Conduit
+
+![Event Conduit](event_conduit.png)
 
 An enterprise-grade outbound event delivery platform that consumes internal **ECST events** from Apache Kafka, matches them to subscriber interests, translates to **CloudEvents v1.0**, and delivers them in near real-time via **webhook batches** (HTTPS with HMAC-SHA256 signatures) or **WebSocket streaming**.
 

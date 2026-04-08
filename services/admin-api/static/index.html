@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Event Gateway Admin</title>
+<title>Event Conduit Admin</title>
 <style>
   :root {
     --bg-primary: #0f1923;
@@ -283,12 +283,13 @@
 <body>
 
 <aside class="sidebar">
-  <div class="sidebar-header">Event Gateway <span>Admin</span></div>
+  <div class="sidebar-header">Event Conduit <span>Admin</span></div>
   <nav>
     <a class="nav-link active" data-page="dashboard"><span class="nav-icon">&#9632;</span> Dashboard</a>
     <a class="nav-link" data-page="subscribers"><span class="nav-icon">&#9706;</span> Subscribers</a>
     <a class="nav-link" data-page="subscriptions"><span class="nav-icon">&#9881;</span> Subscriptions</a>
     <a class="nav-link" data-page="queue-stats"><span class="nav-icon">&#9776;</span> Queue Stats</a>
+    <a class="nav-link" data-page="entity-mappings"><span class="nav-icon">&#9741;</span> Entity Mappings</a>
   </nav>
 </aside>
 
@@ -353,6 +354,46 @@
         <div class="loading">Loading...</div>
       </div>
     </div>
+
+    <!-- Entity Mappings -->
+    <div id="page-entity-mappings" class="page">
+      <div id="em-error"></div>
+      <div class="toolbar">
+        <h2>Entity Mappings</h2>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button class="btn btn-primary" onclick="openModal('em-create-modal')">Create Mapping</button>
+          <button class="btn btn-green" onclick="openModal('em-import-modal')">Import CSV</button>
+          <button class="btn btn-orange" onclick="exportEntityMappingsCsv()">Export CSV</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;margin-bottom:16px;align-items:center;">
+        <div class="form-group" style="margin-bottom:0;min-width:150px;">
+          <select id="em-filter-type" onchange="filterEntityMappings()" style="width:100%;padding:7px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:13px;">
+            <option value="all">All Types</option>
+            <option value="user">user</option>
+            <option value="company">company</option>
+            <option value="custom">custom</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:0;flex:1;">
+          <input type="text" id="em-filter-id" placeholder="Search by Entity ID..." oninput="filterEntityMappings()" style="width:100%;padding:7px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:13px;">
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th style="cursor:pointer" onclick="sortEntityMappings('entity_type')">Entity Type <span id="em-sort-entity_type"></span></th>
+            <th style="cursor:pointer" onclick="sortEntityMappings('entity_id')">Entity ID <span id="em-sort-entity_id"></span></th>
+            <th style="cursor:pointer" onclick="sortEntityMappings('subscriber_id')">Subscriber ID <span id="em-sort-subscriber_id"></span></th>
+            <th style="cursor:pointer" onclick="sortEntityMappings('subscriber_name')">Subscriber Name <span id="em-sort-subscriber_name"></span></th>
+            <th style="cursor:pointer" onclick="sortEntityMappings('created_at')">Created At <span id="em-sort-created_at"></span></th>
+            <th style="cursor:pointer" onclick="sortEntityMappings('updated_at')">Updated At <span id="em-sort-updated_at"></span></th>
+            <th>Actions</th>
+          </tr></thead>
+          <tbody id="em-tbody"><tr><td colspan="7" class="loading">Loading...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -403,6 +444,77 @@
   </div>
 </div>
 
+<!-- Create/Edit Entity Mapping Modal -->
+<div id="em-create-modal" class="modal-overlay" onclick="if(event.target===this)closeModal(this.id)">
+  <div class="modal">
+    <h3 id="em-modal-title">Create Entity Mapping</h3>
+    <div id="em-modal-error"></div>
+    <div class="form-group">
+      <label>Entity Type</label>
+      <div style="display:flex;gap:8px;">
+        <select id="em-entity-type-select" onchange="emEntityTypeChanged()" style="flex:1;">
+          <option value="user">user</option>
+          <option value="company">company</option>
+          <option value="_custom">custom...</option>
+        </select>
+        <input type="text" id="em-entity-type-custom" placeholder="Custom type" style="flex:1;display:none;">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Entity ID</label>
+      <input type="text" id="em-entity-id" placeholder="e.g. user-123">
+    </div>
+    <div class="form-group">
+      <label>Subscriber ID</label>
+      <select id="em-subscriber-id-select" onchange="emSubscriberSelectChanged()" style="width:100%;padding:8px 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:14px;">
+        <option value="">-- type or select --</option>
+      </select>
+      <input type="text" id="em-subscriber-id" placeholder="subscriber ID" style="margin-top:6px;">
+    </div>
+    <input type="hidden" id="em-edit-mode" value="">
+    <input type="hidden" id="em-orig-entity-type" value="">
+    <input type="hidden" id="em-orig-entity-id" value="">
+    <input type="hidden" id="em-orig-subscriber-id" value="">
+    <div class="modal-actions">
+      <button class="btn btn-cancel" onclick="closeModal('em-create-modal')">Cancel</button>
+      <button class="btn btn-primary" id="em-submit-btn" onclick="submitEntityMapping()">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- CSV Import Modal -->
+<div id="em-import-modal" class="modal-overlay" onclick="if(event.target===this)closeModal(this.id)">
+  <div class="modal" style="min-width:500px;max-width:600px;">
+    <h3>Import Entity Mappings (CSV)</h3>
+    <div id="em-import-error"></div>
+    <p style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;">Format: <code>entity_type,entity_id,subscriber_id</code> (one per line, header optional)</p>
+    <div id="em-drop-zone" style="border:2px dashed var(--border);border-radius:8px;padding:32px;text-align:center;color:var(--text-secondary);font-size:14px;cursor:pointer;margin-bottom:12px;transition:border-color 0.15s,background 0.15s;" onclick="document.getElementById('em-csv-file').click()">
+      Drag &amp; drop a CSV file here, or click to select
+      <input type="file" id="em-csv-file" accept=".csv,text/csv" style="display:none;" onchange="emCsvFileSelected(this)">
+    </div>
+    <div id="em-csv-preview" style="display:none;margin-bottom:12px;">
+      <h4 style="font-size:13px;margin-bottom:8px;">Preview (first 5 rows):</h4>
+      <div class="table-wrap" style="max-height:200px;overflow:auto;">
+        <table>
+          <thead><tr><th>Entity Type</th><th>Entity ID</th><th>Subscriber ID</th></tr></thead>
+          <tbody id="em-csv-preview-tbody"></tbody>
+        </table>
+      </div>
+      <div style="font-size:12px;color:var(--text-secondary);margin-top:6px;" id="em-csv-total-rows"></div>
+    </div>
+    <div id="em-import-progress" style="display:none;margin-bottom:12px;">
+      <div style="background:var(--bg-input);border-radius:4px;overflow:hidden;height:6px;">
+        <div id="em-import-bar" style="height:100%;background:var(--accent);width:0%;transition:width 0.3s;"></div>
+      </div>
+      <div style="font-size:12px;color:var(--text-secondary);margin-top:4px;" id="em-import-status">Importing...</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-cancel" onclick="closeModal('em-import-modal');emResetImport()">Cancel</button>
+      <button class="btn btn-primary" id="em-import-btn" onclick="emImportCsv()" disabled>Import</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const ADMIN_API = '';
 const REGISTRY_API = 'http://localhost:18081';
@@ -426,6 +538,7 @@ document.querySelectorAll('.nav-link').forEach(link => {
     if (page === 'subscribers') loadSubscribers();
     if (page === 'subscriptions') loadSubscriptions();
     if (page === 'queue-stats') loadQueueStats();
+    if (page === 'entity-mappings') loadEntityMappings();
   });
 });
 
@@ -687,6 +800,366 @@ async function replaySubscription(id) {
     loadQueueStats();
   } catch (e) {
     showError('qs-error', e.message);
+  }
+}
+
+// ---- Entity Mappings ----
+
+let emAllMappings = [];
+let emSubscribersMap = {};
+let emSortCol = '';
+let emSortAsc = true;
+let emCsvContent = null;
+
+async function loadEntityMappings() {
+  showError('em-error', '');
+  const tbody = document.getElementById('em-tbody');
+  try {
+    const [mappings, subscribers] = await Promise.all([
+      api(REGISTRY_API + '/v1/entity-mappings/all'),
+      api(REGISTRY_API + '/v1/subscribers').catch(() => []),
+    ]);
+    const subList = Array.isArray(subscribers) ? subscribers : [];
+    emSubscribersMap = {};
+    subList.forEach(s => { emSubscribersMap[s.id] = s.name || s.id; });
+    emAllMappings = Array.isArray(mappings) ? mappings : [];
+    renderEntityMappings();
+    populateSubscriberDropdown();
+  } catch (e) {
+    showError('em-error', e.message);
+    tbody.innerHTML = '<tr><td colspan="7" class="loading">Failed to load</td></tr>';
+  }
+}
+
+function populateSubscriberDropdown() {
+  const sel = document.getElementById('em-subscriber-id-select');
+  let html = '<option value="">-- type or select --</option>';
+  Object.entries(emSubscribersMap).forEach(([id, name]) => {
+    html += '<option value="' + escHtml(id) + '">' + escHtml(name) + ' (' + escHtml(id) + ')</option>';
+  });
+  sel.innerHTML = html;
+}
+
+function emSubscriberSelectChanged() {
+  const val = document.getElementById('em-subscriber-id-select').value;
+  if (val) document.getElementById('em-subscriber-id').value = val;
+}
+
+function emEntityTypeChanged() {
+  const sel = document.getElementById('em-entity-type-select');
+  const custom = document.getElementById('em-entity-type-custom');
+  if (sel.value === '_custom') {
+    custom.style.display = '';
+    custom.focus();
+  } else {
+    custom.style.display = 'none';
+    custom.value = '';
+  }
+}
+
+function getEmEntityType() {
+  const sel = document.getElementById('em-entity-type-select');
+  if (sel.value === '_custom') {
+    return document.getElementById('em-entity-type-custom').value.trim();
+  }
+  return sel.value;
+}
+
+function filterEntityMappings() {
+  renderEntityMappings();
+}
+
+function getFilteredMappings() {
+  const typeFilter = document.getElementById('em-filter-type').value;
+  const idFilter = document.getElementById('em-filter-id').value.trim().toLowerCase();
+  let list = emAllMappings;
+  if (typeFilter !== 'all') {
+    if (typeFilter === 'custom') {
+      list = list.filter(m => m.entity_type !== 'user' && m.entity_type !== 'company');
+    } else {
+      list = list.filter(m => m.entity_type === typeFilter);
+    }
+  }
+  if (idFilter) {
+    list = list.filter(m => (m.entity_id || '').toLowerCase().includes(idFilter));
+  }
+  return list;
+}
+
+function sortEntityMappings(col) {
+  if (emSortCol === col) {
+    emSortAsc = !emSortAsc;
+  } else {
+    emSortCol = col;
+    emSortAsc = true;
+  }
+  // Update sort indicators
+  ['entity_type','entity_id','subscriber_id','subscriber_name','created_at','updated_at'].forEach(c => {
+    const el = document.getElementById('em-sort-' + c);
+    if (el) el.textContent = c === col ? (emSortAsc ? '\u25B2' : '\u25BC') : '';
+  });
+  renderEntityMappings();
+}
+
+function renderEntityMappings() {
+  const tbody = document.getElementById('em-tbody');
+  let list = getFilteredMappings();
+
+  if (emSortCol) {
+    list = list.slice().sort((a, b) => {
+      let va, vb;
+      if (emSortCol === 'subscriber_name') {
+        va = (emSubscribersMap[a.subscriber_id] || '').toLowerCase();
+        vb = (emSubscribersMap[b.subscriber_id] || '').toLowerCase();
+      } else {
+        va = (a[emSortCol] || '').toLowerCase();
+        vb = (b[emSortCol] || '').toLowerCase();
+      }
+      if (va < vb) return emSortAsc ? -1 : 1;
+      if (va > vb) return emSortAsc ? 1 : -1;
+      return 0;
+    });
+  }
+
+  if (list.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="loading">No entity mappings found</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = list.map(m => {
+    const subName = emSubscribersMap[m.subscriber_id] || '';
+    return `<tr>
+      <td><span class="badge badge-blue">${escHtml(m.entity_type || '')}</span></td>
+      <td><code>${escHtml(m.entity_id || '')}</code></td>
+      <td><code>${escHtml(m.subscriber_id || '')}</code></td>
+      <td>${escHtml(subName)}</td>
+      <td>${escHtml(m.created_at || '')}</td>
+      <td>${escHtml(m.updated_at || '')}</td>
+      <td style="white-space:nowrap;">
+        <button class="btn btn-sm btn-orange" onclick="editEntityMapping('${escHtml(m.entity_type)}','${escHtml(m.entity_id)}','${escHtml(m.subscriber_id)}')">Edit</button>
+        <button class="btn btn-sm btn-red" onclick="deleteEntityMapping('${escHtml(m.entity_type)}','${escHtml(m.entity_id)}','${escHtml(m.subscriber_id)}')">Delete</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function editEntityMapping(entityType, entityId, subscriberId) {
+  document.getElementById('em-edit-mode').value = 'edit';
+  document.getElementById('em-orig-entity-type').value = entityType;
+  document.getElementById('em-orig-entity-id').value = entityId;
+  document.getElementById('em-orig-subscriber-id').value = subscriberId;
+  document.getElementById('em-modal-title').textContent = 'Edit Entity Mapping';
+  document.getElementById('em-submit-btn').textContent = 'Update';
+
+  const sel = document.getElementById('em-entity-type-select');
+  const customInput = document.getElementById('em-entity-type-custom');
+  if (entityType === 'user' || entityType === 'company') {
+    sel.value = entityType;
+    customInput.style.display = 'none';
+    customInput.value = '';
+  } else {
+    sel.value = '_custom';
+    customInput.style.display = '';
+    customInput.value = entityType;
+  }
+
+  document.getElementById('em-entity-id').value = entityId;
+  document.getElementById('em-subscriber-id').value = subscriberId;
+  const subSel = document.getElementById('em-subscriber-id-select');
+  subSel.value = subscriberId || '';
+  showError('em-modal-error', '');
+  openModal('em-create-modal');
+}
+
+async function submitEntityMapping() {
+  showError('em-modal-error', '');
+  const entityType = getEmEntityType();
+  const entityId = document.getElementById('em-entity-id').value.trim();
+  const subscriberId = document.getElementById('em-subscriber-id').value.trim();
+
+  if (!entityType || !entityId || !subscriberId) {
+    showError('em-modal-error', 'All fields are required');
+    return;
+  }
+
+  const editMode = document.getElementById('em-edit-mode').value === 'edit';
+  try {
+    if (editMode) {
+      await api(REGISTRY_API + '/v1/entity-mappings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entity_type: entityType, entity_id: entityId, subscriber_id: subscriberId }),
+      });
+    } else {
+      await api(REGISTRY_API + '/v1/entity-mappings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entity_type: entityType, entity_id: entityId, subscriber_id: subscriberId }),
+      });
+    }
+    closeModal('em-create-modal');
+    resetEmCreateForm();
+    loadEntityMappings();
+  } catch (e) {
+    showError('em-modal-error', e.message);
+  }
+}
+
+function resetEmCreateForm() {
+  document.getElementById('em-edit-mode').value = '';
+  document.getElementById('em-orig-entity-type').value = '';
+  document.getElementById('em-orig-entity-id').value = '';
+  document.getElementById('em-orig-subscriber-id').value = '';
+  document.getElementById('em-modal-title').textContent = 'Create Entity Mapping';
+  document.getElementById('em-submit-btn').textContent = 'Create';
+  document.getElementById('em-entity-type-select').value = 'user';
+  document.getElementById('em-entity-type-custom').style.display = 'none';
+  document.getElementById('em-entity-type-custom').value = '';
+  document.getElementById('em-entity-id').value = '';
+  document.getElementById('em-subscriber-id').value = '';
+  document.getElementById('em-subscriber-id-select').value = '';
+  showError('em-modal-error', '');
+}
+
+// Reset form when opening create modal fresh
+const origOpenModal = openModal;
+openModal = function(id) {
+  if (id === 'em-create-modal' && document.getElementById('em-edit-mode').value !== 'edit') {
+    resetEmCreateForm();
+  }
+  origOpenModal(id);
+};
+
+async function deleteEntityMapping(entityType, entityId, subscriberId) {
+  if (!confirm('Delete mapping: ' + entityType + ' / ' + entityId + ' -> ' + subscriberId + '?')) return;
+  showError('em-error', '');
+  try {
+    await api(REGISTRY_API + '/v1/entity-mappings', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entity_type: entityType, entity_id: entityId, subscriber_id: subscriberId }),
+    });
+    loadEntityMappings();
+  } catch (e) {
+    showError('em-error', e.message);
+  }
+}
+
+function exportEntityMappingsCsv() {
+  window.open(REGISTRY_API + '/v1/entity-mappings/export.csv', '_blank');
+}
+
+// ---- CSV Import ----
+
+function emResetImport() {
+  emCsvContent = null;
+  document.getElementById('em-csv-file').value = '';
+  document.getElementById('em-csv-preview').style.display = 'none';
+  document.getElementById('em-csv-preview-tbody').innerHTML = '';
+  document.getElementById('em-csv-total-rows').textContent = '';
+  document.getElementById('em-import-progress').style.display = 'none';
+  document.getElementById('em-import-bar').style.width = '0%';
+  document.getElementById('em-import-status').textContent = 'Importing...';
+  document.getElementById('em-import-btn').disabled = true;
+  showError('em-import-error', '');
+}
+
+function emCsvFileSelected(input) {
+  const file = input.files[0];
+  if (!file) return;
+  emReadCsvFile(file);
+}
+
+function emReadCsvFile(file) {
+  showError('em-import-error', '');
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    emCsvContent = e.target.result;
+    emPreviewCsv(emCsvContent);
+  };
+  reader.onerror = function() { showError('em-import-error', 'Failed to read file'); };
+  reader.readAsText(file);
+}
+
+function emPreviewCsv(text) {
+  const lines = text.trim().split('\n').map(l => l.trim()).filter(Boolean);
+  if (lines.length === 0) {
+    showError('em-import-error', 'CSV file is empty');
+    return;
+  }
+  // Skip header if it matches expected columns
+  let dataLines = lines;
+  const first = lines[0].toLowerCase();
+  if (first.startsWith('entity_type') || first.startsWith('"entity_type"')) {
+    dataLines = lines.slice(1);
+  }
+  if (dataLines.length === 0) {
+    showError('em-import-error', 'CSV has no data rows');
+    return;
+  }
+  const previewRows = dataLines.slice(0, 5);
+  const tbody = document.getElementById('em-csv-preview-tbody');
+  tbody.innerHTML = previewRows.map(line => {
+    const parts = line.split(',').map(s => s.trim().replace(/^"|"$/g, ''));
+    return '<tr><td>' + escHtml(parts[0] || '') + '</td><td>' + escHtml(parts[1] || '') + '</td><td>' + escHtml(parts[2] || '') + '</td></tr>';
+  }).join('');
+  document.getElementById('em-csv-total-rows').textContent = 'Total data rows: ' + dataLines.length;
+  document.getElementById('em-csv-preview').style.display = '';
+  document.getElementById('em-import-btn').disabled = false;
+}
+
+// Drag-and-drop support
+(function() {
+  const dz = document.getElementById('em-drop-zone');
+  if (!dz) return;
+  dz.addEventListener('dragover', function(e) { e.preventDefault(); dz.style.borderColor = 'var(--accent)'; dz.style.background = 'rgba(59,130,246,0.05)'; });
+  dz.addEventListener('dragleave', function() { dz.style.borderColor = 'var(--border)'; dz.style.background = ''; });
+  dz.addEventListener('drop', function(e) {
+    e.preventDefault();
+    dz.style.borderColor = 'var(--border)';
+    dz.style.background = '';
+    const file = e.dataTransfer.files[0];
+    if (file) emReadCsvFile(file);
+  });
+})();
+
+async function emImportCsv() {
+  if (!emCsvContent) return;
+  showError('em-import-error', '');
+  const progressDiv = document.getElementById('em-import-progress');
+  const bar = document.getElementById('em-import-bar');
+  const status = document.getElementById('em-import-status');
+  const btn = document.getElementById('em-import-btn');
+
+  progressDiv.style.display = '';
+  bar.style.width = '30%';
+  status.textContent = 'Uploading...';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch(REGISTRY_API + '/v1/entity-mappings/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/csv' },
+      body: emCsvContent,
+    });
+    bar.style.width = '90%';
+    if (!res.ok) {
+      const body = await res.text();
+      let msg;
+      try { msg = JSON.parse(body).error; } catch { msg = body; }
+      throw new Error(msg || 'Import failed: ' + res.status);
+    }
+    bar.style.width = '100%';
+    status.textContent = 'Import complete!';
+    setTimeout(() => {
+      closeModal('em-import-modal');
+      emResetImport();
+      loadEntityMappings();
+    }, 800);
+  } catch (e) {
+    showError('em-import-error', e.message);
+    progressDiv.style.display = 'none';
+    btn.disabled = false;
   }
 }
 

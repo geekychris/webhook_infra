@@ -28,6 +28,7 @@ func NewHandler(store *Store, logger *slog.Logger) *Handler {
 // ---------------------------------------------------------------------------
 
 type createSubscriberRequest struct {
+	ID         string `json:"id"`          // optional: custom ID; auto-generated if empty
 	Name       string `json:"name"`
 	WebhookURL string `json:"webhook_url"`
 	StreamAuth string `json:"stream_auth"`
@@ -52,6 +53,7 @@ func (h *Handler) CreateSubscriber(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sub := &model.Subscriber{
+		ID:         model.SubscriberID(req.ID),
 		Name:       req.Name,
 		WebhookURL: req.WebhookURL,
 		StreamAuth: req.StreamAuth,
@@ -168,6 +170,7 @@ func (h *Handler) DeleteSubscriber(w http.ResponseWriter, r *http.Request) {
 // ---------------------------------------------------------------------------
 
 type createSubscriptionRequest struct {
+	ID            string             `json:"id"` // optional: custom ID
 	EventTypes    []string           `json:"event_types"`
 	SourceFilter  string             `json:"source_filter"`
 	TenantFilter  []model.TenantID   `json:"tenant_filter"`
@@ -231,6 +234,7 @@ func (h *Handler) CreateSubscription(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sub := &model.Subscription{
+		ID:            model.SubscriptionID(req.ID),
 		SubscriberID:  subscriberID,
 		EventTypes:    req.EventTypes,
 		SourceFilter:  req.SourceFilter,

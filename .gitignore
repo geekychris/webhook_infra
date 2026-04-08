@@ -23,8 +23,11 @@ vendor/
 data/
 /queuedata/
 
-# Temporary build artifacts
-admin-api
-subscriber-registry
-webhook-dispatcher
-queue-writer
+# Temporary build artifacts (root-level binaries from `go build`)
+/admin-api
+/subscriber-registry
+/webhook-dispatcher
+/queue-writer
+/subscriber-queue-service
+/consumer-ui
+/producer-ui

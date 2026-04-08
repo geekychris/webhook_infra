@@ -1,8 +1,10 @@
-# Enterprise Outbound Event Gateway — Architecture & Operations Guide
+# Event Conduit — Architecture & Operations Guide
+
+![Event Conduit](../event_conduit.png)
 
 ## 1. Overview
 
-The Event Gateway is an enterprise-grade outbound event delivery platform. It consumes rich internal **ECST events** from Apache Kafka, determines which third-party **subscribers** should receive each event, translates matching events into the **CloudEvents v1.0** format, and delivers them via:
+The Event Conduit is an enterprise-grade outbound event delivery platform. It consumes rich internal **ECST events** from Apache Kafka, determines which third-party **subscribers** should receive each event, translates matching events into the **CloudEvents v1.0** format, and delivers them via:
 
 - **Webhook batches** over HTTPS (with HMAC-SHA256 signatures)
 - **Real-time streaming** over secure WebSockets

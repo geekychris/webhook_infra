@@ -74,6 +74,16 @@ func (s *Store) CreateSubscriber(ctx context.Context, sub *model.Subscriber) (*m
 		sub.SigningKey = key
 	}
 
+	// If a custom ID is provided, use it. Otherwise let the DB generate one.
+	if sub.ID != "" {
+		row := s.pool.QueryRow(ctx,
+			`INSERT INTO subscribers (id, name, webhook_url, signing_key, stream_auth)
+			 VALUES ($1, $2, $3, $4, $5)
+			 RETURNING id, name, webhook_url, signing_key, stream_auth, created_at, updated_at`,
+			string(sub.ID), sub.Name, sub.WebhookURL, sub.SigningKey, sub.StreamAuth,
+		)
+		return scanSubscriber(row)
+	}
 	row := s.pool.QueryRow(ctx,
 		`INSERT INTO subscribers (name, webhook_url, signing_key, stream_auth)
 		 VALUES ($1, $2, $3, $4)
@@ -154,8 +164,24 @@ func scanSubscriber(row pgx.Row) (*model.Subscriber, error) {
 // Subscriptions
 // ---------------------------------------------------------------------------
 
-// CreateSubscription inserts a new subscription.
+// CreateSubscription inserts a new subscription. If sub.ID is set, uses that
+// as the ID; otherwise the database generates one.
 func (s *Store) CreateSubscription(ctx context.Context, sub *model.Subscription) (*model.Subscription, error) {
+	if sub.ID != "" {
+		row := s.pool.QueryRow(ctx,
+			`INSERT INTO subscriptions
+			 (id, subscriber_id, event_types, source_filter, tenant_filter, delivery_mode,
+			  max_batch_size, max_batch_bytes, linger_ms, active)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			 RETURNING id, subscriber_id, event_types, source_filter, tenant_filter,
+			           delivery_mode, max_batch_size, max_batch_bytes, linger_ms, active,
+			           created_at, updated_at`,
+			string(sub.ID), sub.SubscriberID, sub.EventTypes, sub.SourceFilter,
+			tenantIDsToStrings(sub.TenantFilter), string(sub.DeliveryMode),
+			sub.MaxBatchSize, sub.MaxBatchBytes, sub.LingerMS, sub.Active,
+		)
+		return scanSubscription(row)
+	}
 	row := s.pool.QueryRow(ctx,
 		`INSERT INTO subscriptions
 		 (subscriber_id, event_types, source_filter, tenant_filter, delivery_mode,
@@ -164,15 +190,9 @@ func (s *Store) CreateSubscription(ctx context.Context, sub *model.Subscription)
 		 RETURNING id, subscriber_id, event_types, source_filter, tenant_filter,
 		           delivery_mode, max_batch_size, max_batch_bytes, linger_ms, active,
 		           created_at, updated_at`,
-		sub.SubscriberID,
-		sub.EventTypes,
-		sub.SourceFilter,
-		tenantIDsToStrings(sub.TenantFilter),
-		string(sub.DeliveryMode),
-		sub.MaxBatchSize,
-		sub.MaxBatchBytes,
-		sub.LingerMS,
-		sub.Active,
+		sub.SubscriberID, sub.EventTypes, sub.SourceFilter,
+		tenantIDsToStrings(sub.TenantFilter), string(sub.DeliveryMode),
+		sub.MaxBatchSize, sub.MaxBatchBytes, sub.LingerMS, sub.Active,
 	)
 	return scanSubscription(row)
 }

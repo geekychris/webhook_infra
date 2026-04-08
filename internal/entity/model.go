@@ -13,16 +13,17 @@ const (
 
 // EntityMapping represents a mapping from an entity (user, company, etc.) to a subscriber.
 type EntityMapping struct {
-	EntityType   string            `json:"entity_type"`
-	EntityID     string            `json:"entity_id"`
+	EntityType   string             `json:"entity_type"`
+	EntityID     string             `json:"entity_id"`
 	SubscriberID model.SubscriberID `json:"subscriber_id"`
-	CreatedAt    time.Time         `json:"created_at"`
+	CreatedAt    time.Time          `json:"created_at"`
+	UpdatedAt    time.Time          `json:"updated_at"`
 }
 
 // EntityMappingEvent is published to the entity-mappings Kafka topic when mappings change.
 type EntityMappingEvent struct {
-	Action       string            `json:"action"` // "add" or "remove"
-	EntityType   string            `json:"entity_type"`
-	EntityID     string            `json:"entity_id"`
+	Action       string             `json:"action"` // "add" or "remove"
+	EntityType   string             `json:"entity_type"`
+	EntityID     string             `json:"entity_id"`
 	SubscriberID model.SubscriberID `json:"subscriber_id"`
 }

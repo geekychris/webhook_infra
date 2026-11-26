@@ -233,7 +233,7 @@ flowchart LR
 
 ### 4.1 Prerequisites
 
-- Go 1.23+
+- Go 1.26+
 - Docker and Docker Compose
 - RocksDB 10.x with development headers (for the queue service — `brew install rocksdb` on macOS)
 - `protoc` with Go plugins (for proto regeneration only)

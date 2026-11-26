@@ -60,7 +60,7 @@ Events are only generated when you press a button in the producer UI — there i
 ### Prerequisites
 
 - Docker and Docker Compose
-- Go 1.23+ (for local development)
+- Go 1.26+ (for local development)
 - RocksDB 10.x (optional, for native RocksDB backend — Pebble is the default)
 
 ### Run the Platform
